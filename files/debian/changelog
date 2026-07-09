@@ -1,0 +1,43 @@
+lnmp (1.7-1) unstable; urgency=medium
+
+  * Professionnalisation du projet : ajout du versionnage git, de la
+    documentation (README, page de man, site web) et de l'intégration
+    continue (shellcheck + build automatique du paquet).
+  * Version : la version affichée par « lnmp -v » est désormais injectée
+    au build depuis le changelog (fin de la désynchronisation).
+  * Sécurité/robustesse : validation des identifiants d'application et des
+    noms de domaine avant écriture des vhosts Nginx.
+  * Fiabilité : rechargement de Nginx via « nginx -t » puis « reload »
+    (zéro coupure) au lieu d'un « restart » non testé.
+  * PHP : version centralisée dans la variable PHP_VERSION.
+  * Certbot : saisie optionnelle d'un email pour les alertes d'expiration.
+  * Nouvelle commande « doctor » : diagnostic de l'état de la pile.
+  * Nouvelles commandes base de données : « db-create », « db-list »,
+    « db-drop » (provisioning MariaDB par application).
+
+ -- Charles Gamligo <gamligocharles@gmail.com>  Thu, 09 Jul 2026 14:00:00 +0000
+
+lnmp (1.6-1) unstable; urgency=medium
+
+  * Amélioration UX : Affichage automatique de la liste des applications
+    avant désactivation et suppression.
+  * Ajout du support des options en ligne de commande : -h, --help, -v,
+    --version, install, uninstall.
+  * Ajout de la commande 'reload-app' pour synchroniser le registre et
+    support complet des commandes directes en ligne de commande (add,
+    delete, enable, disable).
+
+ -- Charles Gamligo <gamligocharles@gmail.com>  Thu, 09 Jul 2026 12:45:17 +0000
+
+lnmp (1.1-1) unstable; urgency=low
+
+  * Added enable and disable functions for vhosts.
+  * Fixed initial example app entry in registry.
+
+ -- Charles Gamligo <gamligocharles@gmail.com>  Thu, 09 Jul 2026 11:00:00 +0000
+
+lnmp (1.0-1) unstable; urgency=low
+
+  * Initial release of the lnmp command line tool.
+
+ -- Charles Gamligo <gamligocharles@gmail.com>  Thu, 09 Jul 2026 10:00:00 +0000

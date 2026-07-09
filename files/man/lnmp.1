@@ -1,0 +1,101 @@
+.TH LNMP 1 "2026-07-09" "lnmp @VERSION@" "Manuel de LNMP"
+.SH NOM
+lnmp \- gestionnaire CLI de la pile LNMP (Nginx, MariaDB, PHP) et SSL
+.SH SYNOPSIS
+.B lnmp
+[\fICOMMANDE\fR] [\fIARGUMENTS\fR]
+.SH DESCRIPTION
+.B lnmp
+est un outil d'administration en ligne de commande pour déployer et gérer
+rapidement des applications web sur Ubuntu. Il installe et configure la pile
+Nginx + MariaDB + PHP + Certbot, et permet de gérer des hôtes virtuels
+(vhosts) Nginx, des certificats SSL Let's Encrypt et des bases de données.
+.PP
+Le script doit être exécuté avec les privilèges \fBroot\fR (via \fBsudo\fR).
+Lancé sans argument, il ouvre un menu interactif.
+.SH OPTIONS GÉNÉRALES
+.TP
+.BR \-h ", " \-\-help
+Afficher l'aide.
+.TP
+.BR \-v ", " \-\-version
+Afficher la version de l'outil.
+.SH COMMANDES GLOBALES
+.TP
+.B install
+Lancer ou reprendre l'installation de la pile LNMP. L'installation est
+idempotente : elle reprend à la dernière étape réussie.
+.TP
+.B uninstall
+Désinstaller complètement la pile et ses composants.
+.TP
+.B doctor
+Diagnostiquer l'état de la pile (services, configuration Nginx, certificats).
+.SH GESTION DES APPLICATIONS
+.TP
+.B list
+Lister les applications web enregistrées et leur statut (actif/inactif).
+.TP
+.B add
+Ajouter une nouvelle application web (création du vhost et activation).
+.TP
+.BI "delete " id
+Supprimer définitivement une application web.
+.TP
+.BI "enable " id
+Activer une application (lien symbolique du vhost dans sites-enabled).
+.TP
+.BI "disable " id
+Désactiver une application (suppression du lien symbolique).
+.TP
+.B reload-app
+Reconstruire le registre à partir des configurations Nginx réelles.
+.SH GESTION SSL
+.TP
+.BI "add-ssl " id
+Ajouter un certificat SSL Let's Encrypt à une application.
+.TP
+.BI "remove-ssl " id
+Retirer le certificat SSL d'une application.
+.SH GESTION DES BASES DE DONNÉES
+.TP
+.BI "db-create " nom
+Créer une base MariaDB et un utilisateur dédié (mot de passe généré).
+.TP
+.B db-list
+Lister les bases de données existantes.
+.TP
+.BI "db-drop " nom
+Supprimer une base de données.
+.SH FICHIERS
+.TP
+.I /etc/nginx/lnmp_apps.list
+Registre des applications gérées (format \fBid:domaine:chemin\fR).
+.TP
+.I /var/log/lnmp_install_state
+État d'avancement de l'installation (reprise sur incident).
+.SH EXEMPLES
+.PP
+Installer la pile :
+.PP
+.RS
+.B sudo lnmp install
+.RE
+.PP
+Ajouter une application puis générer son certificat SSL :
+.PP
+.RS
+.B sudo lnmp add
+.RE
+.PP
+Diagnostiquer l'état du serveur :
+.PP
+.RS
+.B sudo lnmp doctor
+.RE
+.SH AUTEUR
+Charles Gamligo <gamligocharles@gmail.com>
+.SH SIGNALER UN BOGUE
+https://github.com/CharlesGamligo/lnmp/issues
+.SH COPYRIGHT
+Copyright \(co 2026 Charles Gamligo. Licence MIT.
