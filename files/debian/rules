@@ -1,0 +1,19 @@
+#!/usr/bin/make -f
+
+# Version extraite du changelog, injectée dans le script à l'installation.
+VERSION := $(shell dpkg-parsechangelog -SVersion)
+
+%:
+	dh $@
+
+# Après la copie des fichiers, on remplace le placeholder @VERSION@ par la
+# version réelle du paquet : plus de désynchronisation entre le script et le
+# changelog.
+override_dh_install:
+	dh_install
+	sed -i 's/@VERSION@/$(VERSION)/g' debian/lnmp/usr/bin/lnmp
+
+# Même substitution dans la page de man (avant compression par dh_compress).
+override_dh_installman:
+	dh_installman
+	sed -i 's/@VERSION@/$(VERSION)/g' debian/lnmp/usr/share/man/man1/lnmp.1

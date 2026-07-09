@@ -1,0 +1,32 @@
+# ==============================================================================
+# Artefacts de build Debian (générés par debuild / dpkg-buildpackage)
+# ==============================================================================
+archive/
+*.deb
+*.buildinfo
+*.changes
+*.build
+*.ddeb
+
+# Arborescence de packaging générée dans files/debian/
+files/debian/lnmp/
+files/debian/.debhelper/
+files/debian/files
+files/debian/*.substvars
+files/debian/*.log
+files/debian/debhelper-build-stamp
+files/debian/*.debhelper.log
+files/debian/changelog.dch
+
+# ==============================================================================
+# Divers
+# ==============================================================================
+*.swp
+*.tmp
+*~
+.DS_Store
+.idea/
+.vscode/
+
+# Site web construit (si généré ailleurs)
+web/dist/
