@@ -1,0 +1,18 @@
+[Unit]
+Description=LNMP — démon d'administration web (API locale sur 127.0.0.1)
+Documentation=man:lnmp(1)
+After=network.target nginx.service
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/lnmpd
+Restart=on-failure
+RestartSec=3
+# Le démon pilote nginx/certbot/apt via « lnmp » : il a besoin des droits root.
+# Durcissement compatible avec cette contrainte :
+PrivateTmp=true
+ProtectHome=false
+ProtectSystem=false
+
+[Install]
+WantedBy=multi-user.target

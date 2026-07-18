@@ -7,7 +7,7 @@ Standards-Version: 4.6.2
 
 Package: lnmp
 Architecture: all
-Depends: ${misc:Depends}, bash, acl, curl, wget, nginx, mariadb-server, certbot, python3-certbot-nginx
+Depends: ${misc:Depends}, bash, python3, acl, curl, wget, nginx, mariadb-server, certbot, python3-certbot-nginx
 Description: Gestionnaire CLI complet pour la pile LNMP et SSL.
  Outil d'administration pour le déploiement et la gestion rapide 
  d'applications web sur Ubuntu.

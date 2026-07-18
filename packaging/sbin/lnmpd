@@ -1,0 +1,334 @@
+#!/usr/bin/python3
+# ==============================================================================
+# lnmpd — Démon d'administration LNMP (API JSON locale)
+# ==============================================================================
+# Tourne en root (service systemd), écoute UNIQUEMENT sur 127.0.0.1.
+# nginx (vhost admin.lnmp) sert le panneau statique et relaie /api/ ici.
+#
+# Principe : le démon ne contient PAS la logique métier ; il authentifie les
+# requêtes puis délègue à « lnmp <commande> --json », dont il renvoie la sortie.
+# Aucune chaîne shell n'est construite : subprocess reçoit une liste d'arguments.
+# ==============================================================================
+
+import base64
+import hashlib
+import hmac
+import json
+import os
+import re
+import subprocess
+import time
+from http.cookies import SimpleCookie
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse
+
+LNMP_BIN = "/usr/bin/lnmp"
+CONF_FILE = "/etc/lnmp/lnmp.conf"
+ADMIN_CONF = "/etc/lnmp/admin.conf"
+
+SESSION_TTL = 8 * 3600          # 8 heures
+LOGIN_MAX_FAILS = 5             # tentatives avant blocage
+LOGIN_LOCK_SECONDS = 60        # durée de blocage
+CMD_TIMEOUT = 900              # secondes (install/certbot peuvent être longs)
+
+# Motifs de validation (défense en profondeur ; lnmp valide aussi de son côté).
+RE_ID = re.compile(r"^[A-Za-z0-9._-]+$")
+RE_DOMAIN = re.compile(r"^[A-Za-z0-9.-]+$")
+
+
+# ------------------------------------------------------------------ config ----
+def read_conf(path):
+    """Lit un fichier KEY=\"value\" façon shell en dict."""
+    data = {}
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, val = line.partition("=")
+                data[key.strip()] = val.strip().strip('"').strip("'")
+    except FileNotFoundError:
+        pass
+    return data
+
+
+def admin_port():
+    return int(read_conf(CONF_FILE).get("ADMIN_PORT", "8787"))
+
+
+# ------------------------------------------------------------------- auth -----
+def verify_password(password):
+    """Compare un mot de passe au hash PBKDF2 stocké dans admin.conf."""
+    conf = read_conf(ADMIN_CONF)
+    stored = conf.get("PASSWORD_HASH", "")
+    try:
+        algo, iters, salt_hex, hash_hex = stored.split("$")
+    except ValueError:
+        return False
+    if algo != "pbkdf2_sha256":
+        return False
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt_hex), int(iters))
+    return hmac.compare_digest(dk.hex(), hash_hex)
+
+
+def session_secret():
+    return read_conf(ADMIN_CONF).get("SESSION_SECRET", "")
+
+
+def make_session():
+    """Crée un jeton signé : base64(payload).hmac."""
+    secret = session_secret()
+    payload = json.dumps({"exp": int(time.time()) + SESSION_TTL}).encode()
+    b = base64.urlsafe_b64encode(payload).decode().rstrip("=")
+    sig = hmac.new(secret.encode(), b.encode(), hashlib.sha256).hexdigest()
+    return f"{b}.{sig}"
+
+
+def valid_session(token):
+    secret = session_secret()
+    if not token or not secret or "." not in token:
+        return False
+    b, _, sig = token.rpartition(".")
+    expected = hmac.new(secret.encode(), b.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig, expected):
+        return False
+    try:
+        pad = "=" * (-len(b) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(b + pad))
+    except Exception:
+        return False
+    return payload.get("exp", 0) > int(time.time())
+
+
+# --------------------------------------------------------------- lnmp call ----
+def run_lnmp(args):
+    """Exécute « lnmp --json <args...> » et renvoie (dict, http_status)."""
+    cmd = [LNMP_BIN, "--json"] + args
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=CMD_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "message": "Commande expirée."}, 504
+    except FileNotFoundError:
+        return {"ok": False, "message": "Binaire lnmp introuvable."}, 500
+
+    out = (proc.stdout or "").strip()
+    last = out.splitlines()[-1] if out else ""
+    try:
+        data = json.loads(last)
+    except Exception:
+        return ({"ok": False, "message": "Sortie lnmp illisible.",
+                 "raw": out[-500:], "stderr": (proc.stderr or "")[-500:]}, 500)
+    status = 200 if data.get("ok", True) else 400
+    return data, status
+
+
+# ------------------------------------------------------------- HTTP handler ---
+_login_fails = {"count": 0, "until": 0}
+
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "lnmpd/1.0"
+
+    # -- utilitaires --
+    def _send(self, obj, status=200, cookie=None):
+        body = json.dumps(obj).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        if cookie is not None:
+            self.send_header("Set-Cookie", cookie)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _body_json(self):
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        if length <= 0:
+            return {}
+        try:
+            return json.loads(self.rfile.read(length).decode() or "{}")
+        except Exception:
+            return {}
+
+    def _session_token(self):
+        raw = self.headers.get("Cookie", "")
+        if not raw:
+            return None
+        jar = SimpleCookie()
+        jar.load(raw)
+        return jar["lnmp_session"].value if "lnmp_session" in jar else None
+
+    def _authed(self):
+        return valid_session(self._session_token())
+
+    def log_message(self, *_):  # silence le log par défaut
+        pass
+
+    # -- routage --
+    def do_GET(self):
+        self.route("GET")
+
+    def do_POST(self):
+        self.route("POST")
+
+    def do_DELETE(self):
+        self.route("DELETE")
+
+    def route(self, method):
+        path = urlparse(self.path).path.rstrip("/")
+        parts = [p for p in path.split("/") if p]  # ex: ['api','apps','blog','ssl']
+
+        if len(parts) < 1 or parts[0] != "api":
+            return self._send({"ok": False, "message": "Not found"}, 404)
+        seg = parts[1:]
+
+        # --- login (non authentifié) ---
+        if seg == ["login"] and method == "POST":
+            return self.handle_login()
+        if seg == ["logout"] and method == "POST":
+            expired = "lnmp_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
+            return self._send({"ok": True}, 200, cookie=expired)
+
+        # --- au-delà : authentification requise ---
+        if not self._authed():
+            return self._send({"ok": False, "message": "Non authentifié"}, 401)
+
+        if seg == ["me"] and method == "GET":
+            return self._send({"ok": True, "authenticated": True})
+
+        data, status = self.dispatch(method, seg)
+        return self._send(data, status)
+
+    def handle_login(self):
+        now = time.time()
+        if _login_fails["count"] >= LOGIN_MAX_FAILS and now < _login_fails["until"]:
+            return self._send({"ok": False, "message": "Trop de tentatives, réessayez plus tard."}, 429)
+        password = str(self._body_json().get("password", ""))
+        if password and verify_password(password):
+            _login_fails["count"] = 0
+            cookie = (f"lnmp_session={make_session()}; Path=/; HttpOnly; "
+                      f"SameSite=Strict; Max-Age={SESSION_TTL}")
+            return self._send({"ok": True}, 200, cookie=cookie)
+        _login_fails["count"] += 1
+        if _login_fails["count"] >= LOGIN_MAX_FAILS:
+            _login_fails["until"] = now + LOGIN_LOCK_SECONDS
+        return self._send({"ok": False, "message": "Mot de passe incorrect."}, 401)
+
+    # -- mapping routes -> commandes lnmp --
+    def dispatch(self, method, seg):
+        body = self._body_json() if method in ("POST", "DELETE") else {}
+
+        # /api/status
+        if seg == ["status"] and method == "GET":
+            return run_lnmp(["status"])
+
+        # /api/apps ...
+        if seg == ["apps"] and method == "GET":
+            return run_lnmp(["list"])
+        if seg == ["apps"] and method == "POST":
+            return self.add_app(body)
+        if len(seg) == 3 and seg[0] == "apps" and seg[2] == "enable" and method == "POST":
+            return self.app_action("enable", seg[1])
+        if len(seg) == 3 and seg[0] == "apps" and seg[2] == "disable" and method == "POST":
+            return self.app_action("disable", seg[1])
+        if len(seg) == 3 and seg[0] == "apps" and seg[2] == "ssl" and method == "POST":
+            return self.app_ssl(seg[1], body, add=True)
+        if len(seg) == 3 and seg[0] == "apps" and seg[2] == "ssl" and method == "DELETE":
+            return self.app_ssl(seg[1], body, add=False)
+        if len(seg) == 2 and seg[0] == "apps" and method == "DELETE":
+            return self.app_action("delete", seg[1])
+
+        # /api/domains ...
+        if seg == ["domains"] and method == "GET":
+            return run_lnmp(["domain", "list"])
+        if seg == ["domains"] and method == "POST":
+            return self.add_domain(body)
+        if len(seg) == 2 and seg[0] == "domains" and method == "DELETE":
+            if not RE_DOMAIN.match(seg[1]):
+                return {"ok": False, "message": "Domaine invalide."}, 400
+            return run_lnmp(["domain", "remove", seg[1]])
+
+        # /api/databases ...
+        if seg == ["databases"] and method == "GET":
+            return run_lnmp(["db-list"])
+        if seg == ["databases"] and method == "POST":
+            name = str(body.get("name", ""))
+            if not RE_ID.match(name):
+                return {"ok": False, "message": "Nom de base invalide."}, 400
+            return run_lnmp(["db-create", name])
+        if len(seg) == 2 and seg[0] == "databases" and method == "DELETE":
+            if not RE_ID.match(seg[1]):
+                return {"ok": False, "message": "Nom de base invalide."}, 400
+            return run_lnmp(["db-drop", seg[1], "--yes"])
+
+        # /api/system ...
+        if seg == ["system", "reload"] and method == "POST":
+            return run_lnmp(["reload-app"])
+        if seg == ["system", "uninstall"] and method == "POST":
+            return run_lnmp(["uninstall", "--yes"])
+
+        return {"ok": False, "message": "Route inconnue."}, 404
+
+    # -- handlers détaillés --
+    def add_app(self, body):
+        app_id = str(body.get("id", ""))
+        domain = str(body.get("domain", ""))
+        if not RE_ID.match(app_id):
+            return {"ok": False, "message": "ID d'application invalide."}, 400
+        if domain and not RE_DOMAIN.match(domain):
+            return {"ok": False, "message": "Domaine invalide."}, 400
+        args = ["add", "--id", app_id]
+        if domain:
+            args += ["--domain", domain]
+        if body.get("apex"):
+            args += ["--apex"]
+        elif body.get("sub"):
+            sub = str(body["sub"])
+            if not RE_ID.match(sub):
+                return {"ok": False, "message": "Sous-domaine invalide."}, 400
+            args += ["--sub", sub]
+        if body.get("path"):
+            args += ["--path", str(body["path"])]
+        return run_lnmp(args)
+
+    def app_action(self, action, app_id):
+        if not RE_ID.match(app_id):
+            return {"ok": False, "message": "ID invalide."}, 400
+        return run_lnmp([action, app_id])
+
+    def app_ssl(self, app_id, body, add):
+        if not RE_ID.match(app_id):
+            return {"ok": False, "message": "ID invalide."}, 400
+        if add:
+            args = ["add-ssl", app_id]
+            email = str(body.get("email", ""))
+            if email:
+                args += ["--email", email]
+            return run_lnmp(args)
+        return run_lnmp(["remove-ssl", app_id])
+
+    def add_domain(self, body):
+        name = str(body.get("name", ""))
+        if not RE_DOMAIN.match(name):
+            return {"ok": False, "message": "Nom de domaine invalide."}, 400
+        args = ["domain", "add", name]
+        if str(body.get("type", "")) == "local":
+            args += ["--local"]
+        return run_lnmp(args)
+
+
+def main():
+    if os.geteuid() != 0:
+        raise SystemExit("lnmpd doit être exécuté en tant que root.")
+    port = admin_port()
+    httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    print(f"lnmpd en écoute sur 127.0.0.1:{port}", flush=True)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()

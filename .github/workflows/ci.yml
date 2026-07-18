@@ -9,16 +9,18 @@ on:
 
 jobs:
   lint:
-    name: Lint (shellcheck)
+    name: Lint (shellcheck + python)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Installer shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Vérifier la syntaxe du script
-        run: bash -n files/bin/lnmp
+        run: bash -n packaging/bin/lnmp
       - name: Analyser avec shellcheck
-        run: shellcheck files/bin/lnmp build.sh
+        run: shellcheck packaging/bin/lnmp build.sh
+      - name: Vérifier le démon Python
+        run: python3 -m py_compile packaging/sbin/lnmpd
 
   build:
     name: Construire le paquet .deb
@@ -31,7 +33,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y devscripts debhelper build-essential
       - name: Construire le paquet
-        working-directory: files
+        working-directory: packaging
         run: debuild -us -uc -b
       - name: Récupérer le nom du paquet
         id: pkg
@@ -56,7 +58,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y devscripts debhelper build-essential
       - name: Construire le paquet
-        working-directory: files
+        working-directory: packaging
         run: debuild -us -uc -b
       - name: Créer la release et joindre le .deb
         uses: softprops/action-gh-release@v2

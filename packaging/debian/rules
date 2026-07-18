@@ -17,3 +17,8 @@ override_dh_install:
 override_dh_installman:
 	dh_installman
 	sed -i 's/@VERSION@/$(VERSION)/g' debian/lnmp/usr/share/man/man1/lnmp.1
+
+# Le service d'administration ne doit PAS démarrer à l'installation du paquet :
+# il est configuré et activé par « lnmp install » (mot de passe admin, vhost).
+override_dh_installsystemd:
+	dh_installsystemd --name=lnmp-admin --no-enable --no-start
