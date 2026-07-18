@@ -8,15 +8,15 @@ archive/
 *.build
 *.ddeb
 
-# Arborescence de packaging générée dans files/debian/
-files/debian/lnmp/
-files/debian/.debhelper/
-files/debian/files
-files/debian/*.substvars
-files/debian/*.log
-files/debian/debhelper-build-stamp
-files/debian/*.debhelper.log
-files/debian/changelog.dch
+# Arborescence de packaging générée dans packaging/debian/
+packaging/debian/lnmp/
+packaging/debian/.debhelper/
+packaging/debian/files
+packaging/debian/*.substvars
+packaging/debian/*.log
+packaging/debian/debhelper-build-stamp
+packaging/debian/*.debhelper.log
+packaging/debian/changelog.dch
 
 # ==============================================================================
 # Divers

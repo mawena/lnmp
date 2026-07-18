@@ -1,0 +1,793 @@
+#!/bin/bash
+
+# ==============================================================================
+# LNMP — Gestionnaire de pile web (Nginx, MariaDB, PHP, SSL) & domaines
+# ==============================================================================
+# Le script sert trois consommateurs qui partagent la même logique :
+#   - le menu interactif (aucun argument) ;
+#   - la ligne de commande directe (scriptable) ;
+#   - le démon web lnmpd, via le mode --json.
+# ==============================================================================
+
+# Version injectée au build par debian/rules (placeholder @VERSION@).
+VERSION="@VERSION@"
+if [[ "$VERSION" == "@VERSION@" ]]; then
+    VERSION="$(dpkg-query -W -f='${Version}' lnmp 2>/dev/null || echo 'dev')"
+fi
+
+# ---- Valeurs par défaut (surchargées par /etc/lnmp/lnmp.conf) ----------------
+PHP_VERSION="8.3"
+DEFAULT_DOMAIN=""
+ADMIN_PORT="8787"
+
+# ---- Chemins -----------------------------------------------------------------
+CONFIG_DIR="/etc/lnmp"
+LNMP_CONF="$CONFIG_DIR/lnmp.conf"
+DOMAINS_FILE="$CONFIG_DIR/domains.list"
+ADMIN_CONF="$CONFIG_DIR/admin.conf"
+STATE_FILE="/var/log/lnmp_install_state"
+APPS_REGISTRY="/etc/nginx/lnmp_apps.list"
+HOSTS_FILE="/etc/hosts"
+WEBUI_SRC="/usr/share/lnmp/webui"
+WEBUI_DEST="/var/www/html/lnmp"
+
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+# ==============================================================================
+# ANALYSE DES ARGUMENTS (options nommées + --json + positionnels)
+# ==============================================================================
+JSON_MODE=0
+declare -A OPT
+POSITIONAL=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --json)            JSON_MODE=1; shift ;;
+        -y|--yes)          OPT[yes]=1; shift ;;
+        --apex)            OPT[apex]=1; shift ;;
+        --local)           OPT[local]=1; shift ;;
+        -h|--help)         POSITIONAL+=("help"); shift ;;
+        -v|--version)      POSITIONAL+=("version"); shift ;;
+        --id|--domain|--path|--sub|--email|--password|--name|--type)
+                           key="${1#--}"; OPT[$key]="$2"; shift 2 ;;
+        --)                shift; while [ $# -gt 0 ]; do POSITIONAL+=("$1"); shift; done ;;
+        *)                 POSITIONAL+=("$1"); shift ;;
+    esac
+done
+set -- "${POSITIONAL[@]}"
+
+# ==============================================================================
+# GARDE ROOT + UTILISATEUR RÉEL + CONFIG
+# ==============================================================================
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}Erreur : Ce script doit être exécuté en tant que root (sudo).${NC}"
+    exit 1
+fi
+
+REAL_USER=${SUDO_USER:-$(logname 2>/dev/null || echo "$USER")}
+if [ "$REAL_USER" = "root" ]; then
+    REAL_USER=$(awk -F: '$3>=1000 && $1!="nobody" {print $1; exit}' /etc/passwd)
+fi
+
+# Charge la configuration persistée (surcharge les valeurs par défaut ci-dessus).
+[ -f "$LNMP_CONF" ] && . "$LNMP_CONF"
+
+mkdir -p "$CONFIG_DIR" 2>/dev/null
+touch "$APPS_REGISTRY" "$DOMAINS_FILE" 2>/dev/null
+
+# ==============================================================================
+# HELPERS JSON / RÉSULTATS
+# ==============================================================================
+json_escape() {
+    local s=${1//\\/\\\\}
+    s=${s//\"/\\\"}
+    s=${s//$'\n'/\\n}
+    s=${s//$'\t'/\\t}
+    printf '%s' "$s"
+}
+
+# emit_result <ok|err> <message>
+# En mode --json : imprime {"ok":bool,"message":"..."} ; sinon un texte coloré.
+emit_result() {
+    if [ "$JSON_MODE" -eq 1 ]; then
+        local okval="true"; [ "$1" = "err" ] && okval="false"
+        printf '{"ok":%s,"message":"%s"}\n' "$okval" "$(json_escape "$2")"
+    else
+        if [ "$1" = "err" ]; then echo -e "${RED}$2${NC}"; else echo -e "${GREEN}$2${NC}"; fi
+    fi
+}
+
+get_state() {
+    if [ -f "$STATE_FILE" ]; then
+        local val; val=$(tr -d '[:space:]' < "$STATE_FILE")
+        [[ "$val" =~ ^[0-9]$ ]] && echo "$val" || echo "0"
+    else
+        echo "0"
+    fi
+}
+set_state() { echo "$1" > "$STATE_FILE"; }
+
+# ==============================================================================
+# VALIDATION & NGINX
+# ==============================================================================
+validate_app_id() { [[ "$1" =~ ^[a-zA-Z0-9._-]+$ ]]; }
+validate_domain()  { [[ "$1" =~ ^[a-zA-Z0-9.-]+$ ]]; }
+
+reload_nginx() {
+    if nginx -t 2>/dev/null; then
+        systemctl reload nginx 2>/dev/null
+        return 0
+    fi
+    [ "$JSON_MODE" -eq 0 ] && { echo -e "${RED}Configuration Nginx invalide.${NC}"; nginx -t; }
+    return 1
+}
+
+# Écrit un vhost PHP standard : write_vhost <id> <server_name> <root>
+write_vhost() {
+    local id=$1 server_name=$2 root=$3
+    cat > /etc/nginx/sites-available/"$id" << EOF
+server {
+    listen 80;
+    server_name ${server_name};
+    root ${root};
+    index index.html index.php;
+    charset utf-8;
+    location / { try_files \$uri \$uri/ /index.php?\$query_string; }
+    location ~ \.php\$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/var/run/php/php${PHP_VERSION}-fpm.sock;
+    }
+}
+EOF
+}
+
+# ==============================================================================
+# GESTION /etc/hosts (domaines locaux façon Laragon)
+# ==============================================================================
+hosts_add() {
+    local fqdn=$1
+    grep -qE "[[:space:]]${fqdn//./\\.}([[:space:]]|\$)" "$HOSTS_FILE" 2>/dev/null && return 0
+    printf '127.0.0.1\t%s\t# lnmp\n' "$fqdn" >> "$HOSTS_FILE"
+}
+hosts_remove() {
+    local fqdn=$1 esc
+    esc=$(printf '%s' "$fqdn" | sed 's/[.[\*^$/]/\\&/g')
+    # Supprime la ligne gérée par lnmp pour ce FQDN (bornée par des espaces + marqueur).
+    sed -i "/[[:space:]]${esc}[[:space:]].*#[[:space:]]*lnmp/d" "$HOSTS_FILE"
+}
+
+# ==============================================================================
+# CONFIG : domaine par défaut, écriture de lnmp.conf
+# ==============================================================================
+write_config() {
+    cat > "$LNMP_CONF" << EOF
+# Configuration LNMP (généré automatiquement — modifiable)
+DEFAULT_DOMAIN="$DEFAULT_DOMAIN"
+PHP_VERSION="$PHP_VERSION"
+ADMIN_PORT="$ADMIN_PORT"
+EOF
+    chmod 644 "$LNMP_CONF"
+}
+
+# Demande le domaine par défaut si absent (utilisé à l'installation).
+ensure_default_domain() {
+    [ -n "$DEFAULT_DOMAIN" ] && return 0
+    echo -e "${BLUE}--- Configuration du domaine par défaut ---${NC}"
+    read -p "Domaine par défaut (ex: mawena.cloud, ou 'test' pour du local) : " dd
+    dd=$(echo "$dd" | tr -d ' ')
+    [ -z "$dd" ] && dd="test"
+    local dtype="remote"
+    read -p "Ce domaine est-il local (résolu via /etc/hosts) ? (y/n) : " isloc
+    [[ "$isloc" =~ ^[Yy]$ ]] && dtype="local"
+    DEFAULT_DOMAIN="$dd"
+    grep -qE "^${dd}:" "$DOMAINS_FILE" || echo "${dd}:${dtype}" >> "$DOMAINS_FILE"
+    write_config
+    echo -e "${GREEN}Domaine par défaut : ${dd} (${dtype})${NC}"
+}
+
+# ==============================================================================
+# GESTION DES DOMAINES DE BASE
+# ==============================================================================
+domain_is_local() { grep -qiE "^$1:local$" "$DOMAINS_FILE"; }
+
+domain_list() {
+    if [ "$JSON_MODE" -eq 1 ]; then
+        local first=1
+        printf '{"ok":true,"default":"%s","domains":[' "$(json_escape "$DEFAULT_DOMAIN")"
+        while IFS=: read -r name type; do
+            [ -z "$name" ] && continue
+            [ $first -eq 0 ] && printf ','
+            printf '{"name":"%s","type":"%s"}' "$(json_escape "$name")" "$(json_escape "$type")"
+            first=0
+        done < "$DOMAINS_FILE"
+        printf ']}\n'
+        return
+    fi
+    echo -e "${BLUE}=== Domaines de base ===${NC}"
+    if [ ! -s "$DOMAINS_FILE" ]; then echo "  Aucun domaine enregistré."; return; fi
+    while IFS=: read -r name type; do
+        [ -z "$name" ] && continue
+        local tag="distant"; [ "$type" = "local" ] && tag="local"
+        local star=""; [ "$name" = "$DEFAULT_DOMAIN" ] && star=" ${YELLOW}(défaut)${NC}"
+        echo -e "  ${GREEN}$name${NC}  [$tag]$star"
+    done < "$DOMAINS_FILE"
+}
+
+domain_add() {
+    local name=$1 type=$2
+    [ -z "$name" ] && { emit_result err "Nom de domaine requis."; return 1; }
+    if ! validate_domain "$name"; then emit_result err "Nom de domaine invalide."; return 1; fi
+    [ "$type" != "local" ] && type="remote"
+    if grep -qiE "^${name}:" "$DOMAINS_FILE"; then emit_result err "Le domaine '$name' existe déjà."; return 1; fi
+    echo "${name}:${type}" >> "$DOMAINS_FILE"
+    [ -z "$DEFAULT_DOMAIN" ] && { DEFAULT_DOMAIN="$name"; write_config; }
+    emit_result ok "Domaine '$name' ($type) ajouté."
+}
+
+domain_remove() {
+    local name=$1 esc
+    [ -z "$name" ] && { emit_result err "Nom de domaine requis."; return 1; }
+    esc=$(printf '%s' "$name" | sed 's/[.[\*^$/]/\\&/g')
+    sed -i "/^${esc}:/d" "$DOMAINS_FILE"
+    emit_result ok "Domaine '$name' retiré."
+}
+
+domain_add_interactive() {
+    read -p "Nom du domaine de base (ex: test, api.mawena.cloud) : " name
+    local type="remote"
+    read -p "Local (résolu via /etc/hosts) ? (y/n) : " isloc
+    [[ "$isloc" =~ ^[Yy]$ ]] && type="local"
+    domain_add "$name" "$type"
+}
+
+# ==============================================================================
+# RELOAD-APP (reconstruction du registre depuis Nginx)
+# ==============================================================================
+reload_app() {
+    local tmp_registry="/tmp/lnmp_apps.tmp"
+    rm -f "$tmp_registry"; touch "$tmp_registry"
+
+    if [ ! -d /etc/nginx/sites-available ]; then
+        emit_result err "Nginx ne semble pas installé ou configuré."
+        return 1
+    fi
+
+    for vhost_file in /etc/nginx/sites-available/*; do
+        [ -e "$vhost_file" ] || continue
+        local app_id; app_id=$(basename "$vhost_file")
+        [ "$app_id" = "default" ] && continue
+        [ "$app_id" = "admin.lnmp" ] && continue
+
+        local domain root_path base
+        domain=$(grep -E '^[[:space:]]*server_name' "$vhost_file" | head -n 1 | awk '{print $2}' | tr -d ';')
+        root_path=$(grep -E '^[[:space:]]*root' "$vhost_file" | head -n 1 | awk '{print $2}' | tr -d ';')
+        [ -z "$domain" ] && domain="inconnu"
+        [ -z "$root_path" ] && root_path="/var/www/html"
+        # Domaine de base = ce qui suit le premier point (heuristique)
+        base="${domain#*.}"
+        echo "$app_id:$domain:$root_path:$base" >> "$tmp_registry"
+    done
+
+    mv "$tmp_registry" "$APPS_REGISTRY"
+    chmod 644 "$APPS_REGISTRY"
+    emit_result ok "Registre réaligné ($(wc -l < "$APPS_REGISTRY") applications)."
+}
+
+# ==============================================================================
+# GESTION DES APPLICATIONS
+# ==============================================================================
+add_web_app() {
+    local app_id="${OPT[id]}"
+    local base_domain="${OPT[domain]}"
+    local sub="${OPT[sub]}"
+    local app_path="${OPT[path]}"
+    local use_apex=0; [ -n "${OPT[apex]}" ] && use_apex=1
+
+    if [ -z "$app_id" ]; then
+        if [ "$JSON_MODE" -eq 1 ]; then emit_result err "Paramètre --id requis."; return 1; fi
+        echo -e "${BLUE}=== Ajouter une nouvelle application Web ===${NC}"
+        read -p "ID unique de l'app (ex: blog) : " app_id
+        app_id=$(echo "$app_id" | tr -d ' ')
+    fi
+    [ -z "$app_id" ] && return 1
+    if ! validate_app_id "$app_id"; then emit_result err "ID invalide (lettres, chiffres, . _ -)."; return 1; fi
+    if [ -f "/etc/nginx/sites-available/$app_id" ]; then emit_result err "L'ID '$app_id' existe déjà."; return 1; fi
+
+    # --- Domaine de base ---
+    if [ -z "$base_domain" ]; then
+        if [ "$JSON_MODE" -eq 1 ]; then
+            base_domain="$DEFAULT_DOMAIN"
+        else
+            domain_list
+            read -p "Domaine de base [${DEFAULT_DOMAIN}] : " base_domain
+            [ -z "$base_domain" ] && base_domain="$DEFAULT_DOMAIN"
+        fi
+    fi
+    [ -z "$base_domain" ] && { emit_result err "Aucun domaine de base disponible (ajoutez-en un)."; return 1; }
+    if ! grep -qiE "^${base_domain}:" "$DOMAINS_FILE"; then
+        if [ "$JSON_MODE" -eq 1 ]; then emit_result err "Domaine de base inconnu : $base_domain"; return 1; fi
+        echo "${base_domain}:remote" >> "$DOMAINS_FILE"
+    fi
+
+    # --- FQDN ---
+    local fqdn
+    if [ "$use_apex" -eq 1 ]; then
+        fqdn="$base_domain"
+    else
+        [ -z "$sub" ] && sub="$app_id"
+        fqdn="${sub}.${base_domain}"
+    fi
+    if ! validate_domain "$fqdn"; then emit_result err "FQDN invalide : $fqdn"; return 1; fi
+
+    # --- Chemin ---
+    if [ -z "$app_path" ]; then
+        if [ "$JSON_MODE" -eq 1 ]; then
+            app_path="/var/www/html/${app_id}/public"
+        else
+            read -p "Chemin absolu [/var/www/html/${app_id}/public] : " app_path
+            [ -z "$app_path" ] && app_path="/var/www/html/${app_id}/public"
+        fi
+    fi
+    if [[ "$app_path" != /* ]]; then emit_result err "Le chemin doit être absolu."; return 1; fi
+
+    mkdir -p "$app_path"
+    chown -R www-data:webdev "$app_path" 2>/dev/null || true
+
+    write_vhost "$app_id" "$fqdn" "$app_path"
+    ln -sf /etc/nginx/sites-available/"$app_id" /etc/nginx/sites-enabled/
+    if ! reload_nginx; then
+        rm -f /etc/nginx/sites-enabled/"$app_id" /etc/nginx/sites-available/"$app_id"
+        emit_result err "Configuration Nginx invalide, ajout annulé."
+        return 1
+    fi
+
+    domain_is_local "$base_domain" && hosts_add "$fqdn"
+
+    echo "${app_id}:${fqdn}:${app_path}:${base_domain}" >> "$APPS_REGISTRY"
+    emit_result ok "Application '$app_id' ajoutée : http://${fqdn}"
+
+    if [ "$JSON_MODE" -eq 0 ] && ! domain_is_local "$base_domain"; then
+        read -p "Générer un certificat SSL Let's Encrypt ? (y/n) : " gen_ssl
+        [[ "$gen_ssl" =~ ^[Yy]$ ]] && add_ssl_cert "$app_id"
+    fi
+}
+
+list_web_apps() {
+    if [ "$JSON_MODE" -eq 1 ]; then
+        local first=1
+        printf '{"ok":true,"apps":['
+        while IFS=: read -r id fqdn path base; do
+            [ -z "$id" ] && continue
+            local active=false
+            { [ -L "/etc/nginx/sites-enabled/$id" ] || [ -e "/etc/nginx/sites-enabled/$id" ]; } && active=true
+            [ $first -eq 0 ] && printf ','
+            printf '{"id":"%s","domain":"%s","path":"%s","base":"%s","active":%s}' \
+                "$(json_escape "$id")" "$(json_escape "$fqdn")" "$(json_escape "$path")" "$(json_escape "$base")" "$active"
+            first=0
+        done < "$APPS_REGISTRY"
+        printf ']}\n'
+        return
+    fi
+    if [ ! -s "$APPS_REGISTRY" ]; then echo "Aucune application enregistrée."; return; fi
+    echo -e "ID App\t\t| Statut\t| Domaine"
+    echo "------------------------------------------------------------------------"
+    while IFS=: read -r id fqdn path base; do
+        [ -z "$id" ] && continue
+        local status="${RED}Inactif${NC}"
+        { [ -L "/etc/nginx/sites-enabled/$id" ] || [ -e "/etc/nginx/sites-enabled/$id" ]; } && status="${GREEN}Actif${NC}"
+        echo -e "${GREEN}$id${NC}\t| $status\t| $fqdn"
+    done < "$APPS_REGISTRY"
+}
+
+enable_web_app() {
+    local target_id="${OPT[id]:-$1}"
+    if [ -z "$target_id" ] && [ "$JSON_MODE" -eq 0 ]; then
+        echo "Applications disponibles :"; ls -1 /etc/nginx/sites-available/
+        read -p "ID de l'application à activer : " target_id
+    fi
+    [ -z "$target_id" ] && { emit_result err "ID requis."; return 1; }
+    if [ ! -f "/etc/nginx/sites-available/$target_id" ]; then emit_result err "Le vhost '$target_id' n'existe pas."; return 1; fi
+    if [ -e "/etc/nginx/sites-enabled/$target_id" ]; then emit_result ok "Application '$target_id' déjà active."; return 0; fi
+    ln -sf /etc/nginx/sites-available/"$target_id" /etc/nginx/sites-enabled/
+    if ! reload_nginx; then rm -f /etc/nginx/sites-enabled/"$target_id"; emit_result err "Config invalide, activation annulée."; return 1; fi
+    emit_result ok "Application '$target_id' activée."
+}
+
+disable_web_app() {
+    local target_id="${OPT[id]:-$1}"
+    if [ -z "$target_id" ] && [ "$JSON_MODE" -eq 0 ]; then
+        list_web_apps
+        read -p "ID de l'application à désactiver : " target_id
+    fi
+    [ -z "$target_id" ] && { emit_result err "ID requis."; return 1; }
+    if [ ! -e "/etc/nginx/sites-enabled/$target_id" ]; then emit_result ok "Application '$target_id' déjà inactive."; return 0; fi
+    rm -f /etc/nginx/sites-enabled/"$target_id"
+    reload_nginx
+    emit_result ok "Application '$target_id' désactivée."
+}
+
+delete_web_app() {
+    local target_id="${OPT[id]:-$1}"
+    if [ -z "$target_id" ] && [ "$JSON_MODE" -eq 0 ]; then
+        list_web_apps
+        read -p "ID de l'application à supprimer : " target_id
+    fi
+    [ -z "$target_id" ] && { emit_result err "ID requis."; return 1; }
+
+    local line fqdn base
+    line=$(grep -E "^${target_id}:" "$APPS_REGISTRY" | head -n1)
+    fqdn=$(echo "$line" | cut -d: -f2)
+    base=$(echo "$line" | cut -d: -f4)
+
+    rm -f /etc/nginx/sites-enabled/"$target_id" /etc/nginx/sites-available/"$target_id"
+    sed -i "/^${target_id}:/d" "$APPS_REGISTRY"
+    [ -n "$fqdn" ] && [ -n "$base" ] && domain_is_local "$base" && hosts_remove "$fqdn"
+    reload_nginx
+    emit_result ok "Application '$target_id' supprimée."
+}
+
+add_ssl_cert() {
+    local target_id="${OPT[id]:-$1}"
+    if [ -z "$target_id" ] && [ "$JSON_MODE" -eq 0 ]; then
+        read -p "ID de l'application à sécuriser : " target_id
+    fi
+    [ -z "$target_id" ] && { emit_result err "ID requis."; return 1; }
+    local domain; domain=$(grep -E "^${target_id}:" "$APPS_REGISTRY" | head -n1 | cut -d: -f2)
+    if [ -z "$domain" ]; then emit_result err "ID inconnu."; return 1; fi
+
+    local le_email="${OPT[email]}"
+    if [ "$JSON_MODE" -eq 1 ]; then
+        if [ -n "$le_email" ]; then
+            certbot --nginx -d "$domain" --redirect --agree-tos --non-interactive -m "$le_email" >/dev/null 2>&1
+        else
+            certbot --nginx -d "$domain" --redirect --agree-tos --non-interactive --register-unsafely-without-email >/dev/null 2>&1
+        fi
+        [ $? -eq 0 ] && emit_result ok "SSL activé pour $domain." || emit_result err "Échec Certbot pour $domain."
+        return
+    fi
+    [ -z "$le_email" ] && read -p "Email pour les alertes d'expiration (vide pour ignorer) : " le_email
+    if [ -n "$le_email" ]; then
+        certbot --nginx -d "$domain" --redirect --agree-tos --non-interactive -m "$le_email"
+    else
+        certbot --nginx -d "$domain" --redirect --agree-tos --non-interactive --register-unsafely-without-email
+    fi
+}
+
+remove_ssl_cert() {
+    local target_id="${OPT[id]:-$1}"
+    if [ -z "$target_id" ] && [ "$JSON_MODE" -eq 0 ]; then
+        read -p "ID de l'application : " target_id
+    fi
+    [ -z "$target_id" ] && { emit_result err "ID requis."; return 1; }
+    local domain; domain=$(grep -E "^${target_id}:" "$APPS_REGISTRY" | head -n1 | cut -d: -f2)
+    if [ -z "$domain" ]; then emit_result err "ID inconnu."; return 1; fi
+    certbot delete --cert-name "$domain" --non-interactive >/dev/null 2>&1
+    reload_nginx
+    emit_result ok "SSL retiré pour $domain."
+}
+
+# ==============================================================================
+# DIAGNOSTIC / STATUT
+# ==============================================================================
+stack_status() {
+    if [ "$JSON_MODE" -eq 1 ]; then
+        svc() { systemctl is-active --quiet "$1" 2>/dev/null && echo true || echo false; }
+        local ng=false; nginx -t >/dev/null 2>&1 && ng=true
+        printf '{"ok":true,"version":"%s","services":{"nginx":%s,"mariadb":%s,"php":%s},"nginx_config":%s,"apps":%s,"domains":%s}\n' \
+            "$(json_escape "$VERSION")" "$(svc nginx)" "$(svc mariadb)" "$(svc "php${PHP_VERSION}-fpm")" \
+            "$ng" "$(grep -cvE '^\s*$' "$APPS_REGISTRY" 2>/dev/null || echo 0)" \
+            "$(grep -cvE '^\s*$' "$DOMAINS_FILE" 2>/dev/null || echo 0)"
+        return
+    fi
+    doctor
+}
+
+doctor() {
+    echo -e "${BLUE}=== Diagnostic de la pile LNMP ===${NC}"
+    echo -e "\n${YELLOW}Services :${NC}"
+    for svc in nginx mariadb "php${PHP_VERSION}-fpm" lnmp-admin; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            echo -e "  ${GREEN}●${NC} $svc : actif"
+        else
+            echo -e "  ${RED}○${NC} $svc : inactif ou absent"
+        fi
+    done
+    echo -e "\n${YELLOW}Configuration Nginx :${NC}"
+    if nginx -t 2>/dev/null; then echo -e "  ${GREEN}●${NC} Syntaxe valide"; else echo -e "  ${RED}○${NC} Syntaxe invalide"; fi
+    echo -e "\n${YELLOW}Domaines :${NC}"; domain_list
+    echo -e "\n${YELLOW}Applications :${NC}"
+    if [ -s "$APPS_REGISTRY" ]; then list_web_apps; else echo "  Aucune."; fi
+    echo -e "\n${YELLOW}Certificats SSL :${NC}"
+    if command -v certbot >/dev/null 2>&1; then
+        certbot certificates 2>/dev/null | grep -E "Certificate Name|Expiry Date" | sed 's/^/  /' || echo "  Aucun."
+    else
+        echo "  Certbot non installé."
+    fi
+}
+
+# ==============================================================================
+# BASES DE DONNÉES (MariaDB)
+# ==============================================================================
+db_create() {
+    local db_name="${OPT[name]:-$1}"
+    if [ -z "$db_name" ] && [ "$JSON_MODE" -eq 0 ]; then read -p "Nom de la base à créer : " db_name; fi
+    [ -z "$db_name" ] && { emit_result err "Nom de base requis."; return 1; }
+    if ! validate_app_id "$db_name"; then emit_result err "Nom de base invalide."; return 1; fi
+
+    local db_user="${db_name}_user" db_pass
+    db_pass=$(openssl rand -base64 18 2>/dev/null | tr -d '/+=' | cut -c1-20)
+    [ -z "$db_pass" ] && db_pass=$(head -c 15 /dev/urandom | base64 | tr -d '/+=' | cut -c1-20)
+
+    if ! mariadb -e "CREATE DATABASE IF NOT EXISTS \`$db_name\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>/dev/null; then
+        emit_result err "Impossible de créer la base (MariaDB accessible ?)."; return 1
+    fi
+    mariadb -e "CREATE USER IF NOT EXISTS '$db_user'@'localhost' IDENTIFIED BY '$db_pass';" 2>/dev/null
+    mariadb -e "GRANT ALL PRIVILEGES ON \`$db_name\`.* TO '$db_user'@'localhost';" 2>/dev/null
+    mariadb -e "FLUSH PRIVILEGES;" 2>/dev/null
+
+    if [ "$JSON_MODE" -eq 1 ]; then
+        printf '{"ok":true,"database":"%s","user":"%s","password":"%s"}\n' \
+            "$(json_escape "$db_name")" "$(json_escape "$db_user")" "$(json_escape "$db_pass")"
+        return
+    fi
+    echo -e "${GREEN}Base de données créée.${NC}"
+    echo -e "  Base        : ${BLUE}$db_name${NC}"
+    echo -e "  Utilisateur : ${BLUE}$db_user${NC}"
+    echo -e "  Mot de passe: ${YELLOW}$db_pass${NC}"
+    echo -e "${RED}Notez ce mot de passe : il ne sera plus affiché.${NC}"
+}
+
+db_list() {
+    if [ "$JSON_MODE" -eq 1 ]; then
+        local first=1; printf '{"ok":true,"databases":['
+        while read -r name; do
+            [ -z "$name" ] && continue
+            [ $first -eq 0 ] && printf ','
+            printf '"%s"' "$(json_escape "$name")"; first=0
+        done < <(mariadb -N -e "SHOW DATABASES;" 2>/dev/null | grep -vE '^(information_schema|performance_schema|mysql|sys)$')
+        printf ']}\n'; return
+    fi
+    echo -e "${BLUE}=== Bases de données ===${NC}"
+    mariadb -e "SHOW DATABASES;" 2>/dev/null | grep -vE '^(Database|information_schema|performance_schema|mysql|sys)$' \
+        || echo -e "${RED}MariaDB inaccessible.${NC}"
+}
+
+db_drop() {
+    local db_name="${OPT[name]:-$1}"
+    if [ -z "$db_name" ] && [ "$JSON_MODE" -eq 0 ]; then db_list; read -p "Nom de la base à supprimer : " db_name; fi
+    [ -z "$db_name" ] && { emit_result err "Nom de base requis."; return 1; }
+    if ! validate_app_id "$db_name"; then emit_result err "Nom de base invalide."; return 1; fi
+    if [ "$JSON_MODE" -eq 0 ] && [ -z "${OPT[yes]}" ]; then
+        read -p "Supprimer DÉFINITIVEMENT la base '$db_name' et son utilisateur ? (y/n) : " confirm
+        [[ "$confirm" =~ ^[Yy]$ ]] || return 1
+    fi
+    mariadb -e "DROP DATABASE IF EXISTS \`$db_name\`;" 2>/dev/null
+    mariadb -e "DROP USER IF EXISTS '${db_name}_user'@'localhost';" 2>/dev/null
+    mariadb -e "FLUSH PRIVILEGES;" 2>/dev/null
+    emit_result ok "Base '$db_name' supprimée."
+}
+
+# ==============================================================================
+# INSTALLATION / DÉSINSTALLATION
+# ==============================================================================
+install_lnmp() {
+    local current_step; current_step=$(get_state)
+    echo -e "${BLUE}=== Installation de la pile LNMP ===${NC}"
+
+    ensure_default_domain
+
+    if [ "$current_step" -le 1 ]; then
+        echo -e "${YELLOW}[1/7] Système et 'acl'...${NC}"
+        apt-get update -y && apt-get upgrade -y
+        apt-get install -y acl software-properties-common curl wget unzip git
+        set_state 1
+    fi
+    if [ "$current_step" -le 2 ]; then
+        echo -e "${YELLOW}[2/7] Nginx...${NC}"
+        apt-get install -y nginx
+        systemctl enable --now nginx
+        set_state 2
+    fi
+    if [ "$current_step" -le 3 ]; then
+        echo -e "${YELLOW}[3/7] MariaDB...${NC}"
+        apt-get install -y mariadb-server mariadb-client
+        systemctl enable --now mariadb
+        set_state 3
+    fi
+    if [ "$current_step" -le 4 ]; then
+        echo -e "${YELLOW}[4/7] PHP ${PHP_VERSION}...${NC}"
+        add-apt-repository ppa:ondrej/php -y
+        apt-get update -y
+        apt-get install -y \
+            php${PHP_VERSION}-fpm php${PHP_VERSION}-cli php${PHP_VERSION}-mysql \
+            php${PHP_VERSION}-curl php${PHP_VERSION}-xml php${PHP_VERSION}-mbstring \
+            php${PHP_VERSION}-zip php${PHP_VERSION}-bcmath php${PHP_VERSION}-soap \
+            php${PHP_VERSION}-intl php${PHP_VERSION}-readline php${PHP_VERSION}-sqlite3 \
+            php${PHP_VERSION}-gd php${PHP_VERSION}-redis
+        systemctl enable --now php${PHP_VERSION}-fpm
+        set_state 4
+    fi
+    if [ "$current_step" -le 5 ]; then
+        echo -e "${YELLOW}[5/7] Certbot...${NC}"
+        apt-get install -y certbot python3-certbot-nginx
+        set_state 5
+    fi
+    if [ "$current_step" -le 6 ]; then
+        echo -e "${YELLOW}[6/7] Droits et groupe webdev...${NC}"
+        getent group webdev >/dev/null || groupadd webdev
+        if [ -n "$REAL_USER" ] && [ "$REAL_USER" != "root" ]; then usermod -aG webdev "$REAL_USER"; fi
+        usermod -aG webdev www-data
+        mkdir -p /var/www/html
+        chown -R www-data:webdev /var/www/html
+        find /var/www/html -type d -exec chmod g+s {} \;
+        chmod -R 775 /var/www/html
+        setfacl -R -d -m g:webdev:rwx /var/www/html
+        setfacl -R -d -m u:www-data:rwx /var/www/html
+        set_state 6
+    fi
+    if [ "$current_step" -le 7 ]; then
+        echo -e "${YELLOW}[7/7] Application témoin...${NC}"
+        local initial_app_path="/var/www/html/example/public"
+        mkdir -p "$initial_app_path"
+        [ -f "$initial_app_path/index.php" ] || echo "<?php echo 'Bienvenue sur LNMP !'; ?>" > "$initial_app_path/index.php"
+        write_vhost "example" ".${DEFAULT_DOMAIN}" "$initial_app_path"
+        ln -sf /etc/nginx/sites-available/example /etc/nginx/sites-enabled/
+        [ -f /etc/nginx/sites-enabled/default ] && rm /etc/nginx/sites-enabled/default
+        reload_nginx
+        set_state 7
+    fi
+
+    echo -e "${GREEN}=== LNMP installée (domaine par défaut : ${DEFAULT_DOMAIN}) ===${NC}"
+}
+
+uninstall_lnmp() {
+    if [ "$JSON_MODE" -eq 0 ] && [ -z "${OPT[yes]}" ]; then
+        read -p "Voulez-vous vraiment TOUT supprimer (pile + configuration) ? (y/n) : " confirm
+        [[ "$confirm" =~ ^[Yy]$ ]] || return 1
+    fi
+    systemctl stop nginx mariadb "php${PHP_VERSION}-fpm" 2>/dev/null || true
+    apt-get purge -y nginx mariadb-server mariadb-client "php${PHP_VERSION}*" certbot python3-certbot-nginx acl
+    apt-get autoremove -y
+    rm -f "$STATE_FILE" "$APPS_REGISTRY"
+    rm -rf /etc/nginx "$CONFIG_DIR"
+    emit_result ok "Désinstallation complète réussie."
+    [ "$JSON_MODE" -eq 0 ] && exit 0
+}
+
+# ==============================================================================
+# AIDE / VERSION
+# ==============================================================================
+show_version() { echo -e "${GREEN}LNMP CLI Manager - Version $VERSION${NC}"; }
+
+show_help() {
+    cat << EOF
+Usage : lnmp [COMMANDE] [OPTIONS]
+
+Options générales :
+  -h, --help            Afficher cette aide
+  -v, --version         Afficher la version
+  --json                Sortie JSON (pour scripts / démon web)
+
+Global :
+  install               Installer / reprendre l'installation de la pile
+  uninstall             Désinstaller la pile et la configuration
+  doctor                Diagnostiquer l'état de la pile
+  status                État synthétique (utile avec --json)
+
+Applications :
+  list                  Lister les applications
+  add                   Ajouter une application
+                        (--id, --domain, --sub, --apex, --path)
+  enable  <id>          Activer une application
+  disable <id>          Désactiver une application
+  delete  <id>          Supprimer une application
+  add-ssl <id>          Générer un certificat SSL (--email)
+  remove-ssl <id>       Retirer un certificat SSL
+  reload-app            Reconstruire le registre depuis Nginx
+
+Domaines :
+  domain list           Lister les domaines de base
+  domain add <nom>      Ajouter un domaine (--local pour du local)
+  domain remove <nom>   Retirer un domaine
+
+Bases de données :
+  db-create <nom>       Créer une base + utilisateur
+  db-list               Lister les bases
+  db-drop <nom>         Supprimer une base (--yes pour ne pas confirmer)
+
+Sans commande : menu interactif.
+EOF
+}
+
+# ==============================================================================
+# ROUTAGE DES COMMANDES DIRECTES
+# ==============================================================================
+if [ $# -gt 0 ]; then
+    cmd="$1"; arg="$2"
+    case "$cmd" in
+        help)        show_help; exit 0 ;;
+        version)     show_version; exit 0 ;;
+        install)     install_lnmp; exit 0 ;;
+        uninstall)   uninstall_lnmp; exit $? ;;
+        doctor)      doctor; exit 0 ;;
+        status)      stack_status; exit 0 ;;
+        list)        list_web_apps; exit 0 ;;
+        add)         add_web_app; exit $? ;;
+        enable)      enable_web_app "$arg"; exit $? ;;
+        disable)     disable_web_app "$arg"; exit $? ;;
+        delete)      delete_web_app "$arg"; exit $? ;;
+        add-ssl)     add_ssl_cert "$arg"; exit $? ;;
+        remove-ssl)  remove_ssl_cert "$arg"; exit $? ;;
+        reload-app)  reload_app; exit $? ;;
+        domain)
+            dtype="remote"; [ -n "${OPT[local]}" ] && dtype="local"
+            case "$arg" in
+                list)   domain_list ;;
+                add)    domain_add "${OPT[name]:-$3}" "$dtype" ;;
+                remove) domain_remove "${OPT[name]:-$3}" ;;
+                *)      emit_result err "Sous-commande : list|add|remove." ;;
+            esac
+            exit $? ;;
+        db-create)   db_create "$arg"; exit $? ;;
+        db-list)     db_list; exit $? ;;
+        db-drop)     db_drop "$arg"; exit $? ;;
+        *)           emit_result err "Commande inconnue : $cmd"; [ "$JSON_MODE" -eq 0 ] && show_help; exit 1 ;;
+    esac
+fi
+
+# ==============================================================================
+# MENU INTERACTIF
+# ==============================================================================
+while true; do
+    clear
+    echo -e "${BLUE}=====================================================${NC}"
+    echo -e "${GREEN}             GESTIONNAIRE LNMP AUTOMATIQUE            ${NC}"
+    echo -e "${BLUE}=====================================================${NC}"
+    echo " 1 - Installer / Reprendre l'installation LNMP"
+    echo " 2 - Lister les applications web"
+    echo " 3 - Ajouter une application web"
+    echo " 4 - Supprimer une application web"
+    echo " 5 - Ajouter un certificat SSL à une application"
+    echo " 6 - Retirer un certificat SSL à une application"
+    echo " 7 - Désinstaller complètement LNMP"
+    echo " 8 - Activer une application (Link vhost)"
+    echo " 9 - Désactiver une application (Unlink vhost)"
+    echo "10 - Créer une base de données"
+    echo "11 - Lister les bases de données"
+    echo "12 - Supprimer une base de données"
+    echo "13 - Lister les domaines"
+    echo "14 - Ajouter un domaine"
+    echo "15 - Retirer un domaine"
+    echo " D - Diagnostic de la pile (doctor)"
+    echo " R - Reconstruire le registre (reload-app)"
+    echo " 0 - Quitter"
+    echo -e "${BLUE}=====================================================${NC}"
+    read -p "Choisissez une option : " choice
+
+    case $choice in
+        1)  install_lnmp ;;
+        2)  echo -e "${BLUE}=== Registre ===${NC}"; list_web_apps ;;
+        3)  add_web_app ;;
+        4)  delete_web_app ;;
+        5)  add_ssl_cert ;;
+        6)  remove_ssl_cert ;;
+        7)  uninstall_lnmp ;;
+        8)  enable_web_app ;;
+        9)  disable_web_app ;;
+        10) db_create ;;
+        11) db_list ;;
+        12) db_drop ;;
+        13) domain_list ;;
+        14) domain_add_interactive ;;
+        15) read -p "Nom du domaine à retirer : " dn; domain_remove "$dn" ;;
+        [Dd]) doctor ;;
+        [Rr]) reload_app ;;
+        0)  exit 0 ;;
+        *)  echo -e "${RED}Option invalide.${NC}" ;;
+    esac
+    echo -e "\nAppuyez sur [ENTRÉE] pour continuer..."
+    read
+done

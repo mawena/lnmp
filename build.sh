@@ -21,11 +21,11 @@ export DEBEMAIL="gamligocharles@gmail.com"
 echo -e "\033[0;34m=== Début du processus de build pour la version $VERSION ===\033[0m"
 
 # 1. Entrer dans le dossier source
-if [ ! -d "files" ]; then
-    echo -e "\033[0;31mErreur : Le dossier 'files' est introuvable.\033[0m"
+if [ ! -d "packaging" ]; then
+    echo -e "\033[0;31mErreur : Le dossier 'packaging' est introuvable.\033[0m"
     exit 1
 fi
-cd files
+cd packaging
 
 # 2. Nettoyer le fichier temporaire
 rm -f debian/changelog.dch
