@@ -46,9 +46,15 @@ configurer la **pile** (Nginx, MariaDB, PHP, Certbot) :
 sudo lnmp install
 ```
 
-Cette étape est **idempotente** : en cas d'interruption, relancez la même
-commande — elle reprend à la dernière étape réussie (état stocké dans
+L'installation vous demande le **domaine par défaut** (ex. `mawena.cloud`, ou
+`test` pour du local) et le **mot de passe du panneau web**. Elle est
+**idempotente** : en cas d'interruption, relancez la même commande — elle
+reprend à la dernière étape réussie (état stocké dans
 `/var/log/lnmp_install_state`).
+
+À la fin, le panneau d'administration est accessible sur **`http://admin.lnmp`**
+(voir [usage.md](usage.md#panneau-web-dadministration) pour l'accès local ou par
+tunnel SSH).
 
 ## Désinstallation
 

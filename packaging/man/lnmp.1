@@ -9,10 +9,16 @@ lnmp \- gestionnaire CLI de la pile LNMP (Nginx, MariaDB, PHP) et SSL
 est un outil d'administration en ligne de commande pour déployer et gérer
 rapidement des applications web sur Ubuntu. Il installe et configure la pile
 Nginx + MariaDB + PHP + Certbot, et permet de gérer des hôtes virtuels
-(vhosts) Nginx, des certificats SSL Let's Encrypt et des bases de données.
+(vhosts) Nginx, des domaines multiples, des certificats SSL Let's Encrypt et
+des bases de données.
+.PP
+L'installation déploie également une interface web d'administration
+(\fBhttp://admin.lnmp\fR), liée à 127.0.0.1 et pilotée par le démon
+\fBlnmpd\fR(8).
 .PP
 Le script doit être exécuté avec les privilèges \fBroot\fR (via \fBsudo\fR).
-Lancé sans argument, il ouvre un menu interactif.
+Lancé sans argument, il ouvre un menu interactif. L'option \fB\-\-json\fR
+produit une sortie lisible par machine (utilisée par le démon web).
 .SH OPTIONS GÉNÉRALES
 .TP
 .BR \-h ", " \-\-help
@@ -31,6 +37,12 @@ Désinstaller complètement la pile et ses composants.
 .TP
 .B doctor
 Diagnostiquer l'état de la pile (services, configuration Nginx, certificats).
+.TP
+.B status
+Afficher un état synthétique de la pile (utile avec \fB\-\-json\fR).
+.TP
+.B set-password
+Définir ou réinitialiser le mot de passe du panneau web.
 .SH GESTION DES APPLICATIONS
 .TP
 .B list
@@ -38,6 +50,8 @@ Lister les applications web enregistrées et leur statut (actif/inactif).
 .TP
 .B add
 Ajouter une nouvelle application web (création du vhost et activation).
+Options : \fB\-\-id\fR, \fB\-\-domain\fR (domaine de base), \fB\-\-sub\fR
+(sous-domaine), \fB\-\-apex\fR (utiliser le domaine racine), \fB\-\-path\fR.
 .TP
 .BI "delete " id
 Supprimer définitivement une application web.
@@ -57,6 +71,17 @@ Ajouter un certificat SSL Let's Encrypt à une application.
 .TP
 .BI "remove-ssl " id
 Retirer le certificat SSL d'une application.
+.SH GESTION DES DOMAINES
+.TP
+.B domain list
+Lister les domaines de base enregistrés (local ou distant).
+.TP
+.BI "domain add " nom
+Ajouter un domaine de base. L'option \fB\-\-local\fR le marque comme local
+(les FQDN sont alors ajoutés automatiquement à \fI/etc/hosts\fR).
+.TP
+.BI "domain remove " nom
+Retirer un domaine de base du registre.
 .SH GESTION DES BASES DE DONNÉES
 .TP
 .BI "db-create " nom
@@ -70,7 +95,16 @@ Supprimer une base de données.
 .SH FICHIERS
 .TP
 .I /etc/nginx/lnmp_apps.list
-Registre des applications gérées (format \fBid:domaine:chemin\fR).
+Registre des applications (format \fBid:fqdn:chemin:domaine_base\fR).
+.TP
+.I /etc/lnmp/lnmp.conf
+Configuration : domaine par défaut, version de PHP, port du démon.
+.TP
+.I /etc/lnmp/domains.list
+Domaines de base (format \fBnom:local|remote\fR).
+.TP
+.I /etc/lnmp/admin.conf
+Empreinte du mot de passe et secret de session du panneau web (root, 600).
 .TP
 .I /var/log/lnmp_install_state
 État d'avancement de l'installation (reprise sur incident).

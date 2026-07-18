@@ -7,12 +7,15 @@ dépôt et le processus de publication d'une nouvelle version.
 
 ```
 lnmp/
-├── files/                  # Sources du paquet Debian
-│   ├── bin/lnmp            # Le script CLI principal
+├── packaging/              # Sources du paquet Debian (racine debhelper)
+│   ├── bin/lnmp            # CLI principal (logique métier, mode --json)
+│   ├── sbin/lnmpd          # Démon d'administration (API JSON, Python)
+│   ├── webui/              # Panneau web statique → /var/www/html/lnmp
+│   ├── systemd/            # Unité lnmp-admin.service
 │   ├── man/lnmp.1          # Page de manuel
 │   └── debian/             # Métadonnées de packaging (control, rules, changelog…)
 ├── docs/                   # Documentation Markdown
-├── web/                    # Site de documentation statique (déployable)
+├── index.html             # Site de présentation statique (déployable)
 ├── build.sh                # Script de build + envoi vers le dépôt APT
 └── .github/workflows/      # Intégration continue
 ```
@@ -25,8 +28,8 @@ sudo apt install devscripts debhelper build-essential shellcheck
 
 ## Boucle de développement
 
-1. Modifier `files/bin/lnmp` (ou la doc).
-2. Vérifier le script : `shellcheck files/bin/lnmp`.
+1. Modifier `packaging/bin/lnmp` (ou la doc).
+2. Vérifier le script : `shellcheck packaging/bin/lnmp`.
 3. Tester localement l'installation du `.deb` généré dans une VM/conteneur
    Ubuntu (le script exige `root` et modifie Nginx/MariaDB — **ne jamais tester
    sur une machine de production**).
@@ -45,11 +48,11 @@ On utilise les [Conventional Commits](https://www.conventionalcommits.org/) :
 
 1. Mettre à jour le changelog :
    ```bash
-   cd files
+   cd packaging
    dch -v 1.8-1 "Description de la nouveauté"
    ```
    > La version affichée par `lnmp -v` est **injectée automatiquement** depuis
-   > le changelog au moment du build (voir `files/debian/rules`). Ne codez plus
+   > le changelog au moment du build (voir `packaging/debian/rules`). Ne codez plus
    > jamais la version en dur dans `bin/lnmp`.
 2. Committer et créer un tag :
    ```bash

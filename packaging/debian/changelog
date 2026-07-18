@@ -1,3 +1,20 @@
+lnmp (1.8-1) unstable; urgency=medium
+
+  * Interface web d'administration (http://admin.lnmp) : panneau pour gérer
+    applications, SSL, domaines, bases de données et opérations système.
+  * Démon lnmpd (API JSON locale sur 127.0.0.1, service systemd) avec
+    authentification par mot de passe et sessions signées.
+  * Gestion de domaines multiples (local/distant) façon Laragon : commande
+    « domain », gestion automatique de /etc/hosts pour les domaines locaux.
+  * À l'ajout d'une application, choix du domaine de base (sous-domaine ou
+    apex) ; registre d'apps étendu.
+  * L'installation demande le domaine par défaut et le mot de passe du
+    panneau web ; nouvelle commande « set-password ».
+  * CLI entièrement scriptable avec le mode « --json » (options nommées).
+  * Réorganisation du dépôt : sources du paquet dans packaging/.
+
+ -- Charles Gamligo <gamligocharles@gmail.com>  Sat, 18 Jul 2026 12:00:00 +0000
+
 lnmp (1.7-1) unstable; urgency=medium
 
   * Professionnalisation du projet : ajout du versionnage git, de la

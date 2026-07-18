@@ -4,22 +4,27 @@
 
 | Fichier                              | Rôle                                                        |
 | ------------------------------------ | ----------------------------------------------------------- |
-| `/etc/nginx/lnmp_apps.list`          | Registre des applications (`id:domaine:chemin`).            |
-| `/var/log/lnmp_install_state`        | Étape d'installation atteinte (reprise sur incident, 0–7).  |
+| `/etc/nginx/lnmp_apps.list`          | Registre des applications (`id:fqdn:chemin:domaine_base`).  |
+| `/etc/lnmp/lnmp.conf`                | Domaine par défaut, version PHP, port du démon.             |
+| `/etc/lnmp/domains.list`             | Domaines de base (`nom:local\|remote`).                     |
+| `/etc/lnmp/admin.conf`               | Hash du mot de passe + secret de session (root, `600`).     |
+| `/var/log/lnmp_install_state`        | Étape d'installation atteinte (reprise sur incident, 0–8).  |
 | `/etc/nginx/sites-available/<id>`    | Configuration vhost de chaque application.                  |
 | `/etc/nginx/sites-enabled/<id>`      | Lien symbolique = application active.                       |
+| `/var/www/html/lnmp`                 | Panneau web statique (servi par le vhost `admin.lnmp`).     |
 
 ## Format du registre
 
 Chaque ligne décrit une application :
 
 ```
-monapp:app.mawena.cloud:/var/www/html/MonApp/public
+blog:blog.mawena.cloud:/var/www/html/blog/public:mawena.cloud
 ```
 
 - **id** — identifiant unique (aussi le nom du fichier vhost) ;
-- **domaine** — `server_name` Nginx ;
-- **chemin** — dossier `root` servi.
+- **fqdn** — `server_name` Nginx complet ;
+- **chemin** — dossier `root` servi ;
+- **domaine_base** — domaine de base choisi (pour la gestion `/etc/hosts`).
 
 ## Structure d'un vhost généré
 

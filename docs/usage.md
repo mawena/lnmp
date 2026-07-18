@@ -1,7 +1,7 @@
 # Utilisation
 
-LNMP offre **deux modes** d'utilisation qui partagent exactement les mêmes
-fonctions : un menu interactif et des commandes directes scriptables.
+LNMP offre **trois interfaces** qui partagent exactement les mêmes fonctions :
+un menu interactif, des commandes directes scriptables, et un panneau web.
 
 ## Menu interactif
 
@@ -56,6 +56,42 @@ Pour mettre une application hors ligne temporairement (sans perdre sa config) :
 ```bash
 sudo lnmp disable monapp   # Hors ligne
 sudo lnmp enable monapp    # De nouveau en ligne
+```
+
+## Domaines multiples (façon Laragon)
+
+Déclarez les domaines de base, puis choisissez-les à l'ajout d'une application.
+
+```bash
+sudo lnmp domain add test --local          # domaine local -> /etc/hosts géré
+sudo lnmp domain add mawena.cloud          # domaine distant
+sudo lnmp add --id blog --domain test      # http://blog.test
+sudo lnmp add --id shop --domain mawena.cloud --apex   # http://mawena.cloud
+```
+
+Pour un domaine marqué **local**, LNMP ajoute et retire tout seul les entrées
+`/etc/hosts` (`127.0.0.1 blog.test`) à la création et à la suppression de l'app.
+
+## Panneau web d'administration
+
+L'installation déploie un panneau sur **`http://admin.lnmp`** (lié à
+127.0.0.1). Il couvre les mêmes actions : applications, SSL, domaines, bases de
+données et opérations système.
+
+- **En local** : ajoutez `127.0.0.1 admin.lnmp` au fichier `hosts` de votre
+  poste, puis ouvrez `http://admin.lnmp`.
+- **Sur un VPS** : passez par un tunnel SSH (le panneau n'est jamais exposé
+  directement à Internet) :
+
+  ```bash
+  ssh -L 8080:127.0.0.1:80 utilisateur@mon-vps
+  # puis ouvrez http://localhost:8080
+  ```
+
+Le panneau exige une authentification. Pour (ré)initialiser le mot de passe :
+
+```bash
+sudo lnmp set-password
 ```
 
 ## Resynchroniser le registre

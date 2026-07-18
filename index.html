@@ -206,6 +206,20 @@
   .foot-inner .sep { margin-left: auto; }
 
   .badge-ok { color: var(--emerald); font-family: var(--mono); font-size: 12px; border: 1px solid rgba(63,185,132,0.35); padding: 3px 9px; border-radius: 20px; }
+
+  /* ---------- Blocs documentation ---------- */
+  .doc-step-label { display: flex; align-items: center; gap: 11px; font-weight: 600; font-size: 15px; margin: 26px 0 12px; }
+  .doc-num { flex: none; width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; font-family: var(--mono); font-size: 13px; color: var(--coral); border: 1px solid var(--line); }
+  .doc-note { color: var(--muted); font-size: 14.5px; margin: 14px 0 0; max-width: 70ch; }
+  .doc-note code, .doc-step-label code, .lede code { font-family: var(--mono); color: var(--text); background: var(--ink-2); border: 1px solid var(--line-soft); border-radius: 6px; padding: 1px 6px; font-size: 0.9em; }
+  .doc-tip { border-left: 3px solid var(--amber); padding: 10px 0 10px 14px; background: linear-gradient(90deg, rgba(245,181,68,0.06), transparent); border-radius: 0 8px 8px 0; }
+  .doc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 26px; }
+  @media (max-width: 720px) { .doc-grid { grid-template-columns: 1fr; } }
+  .doc-block h3 { font-size: 16px; margin: 0 0 10px; letter-spacing: -0.01em; }
+  .doc-block p { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+  .panel-cta { display: flex; flex-wrap: wrap; gap: 22px; align-items: center; margin-top: 26px; padding: 22px 24px; background: linear-gradient(180deg, var(--surface), var(--ink-2)); border: 1px solid var(--line-soft); border-radius: 14px; }
+  .panel-cta .pc-url { font-family: var(--mono); font-size: 18px; color: var(--coral); }
+  .panel-cta .pc-text { color: var(--muted); font-size: 14px; max-width: 52ch; }
 </style>
 </head>
 <body>
@@ -214,11 +228,12 @@
   <div class="bar-inner">
     <a class="brand" href="#top" aria-label="Accueil LNMP">
       <span class="stack-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
-      <b>lnmp</b><span class="v">v1.7</span>
+      <b>lnmp</b><span class="v">v1.8</span>
     </a>
     <nav class="links" aria-label="Navigation principale">
       <a href="#install">Installation</a>
-      <a href="#start">Démarrage</a>
+      <a href="#usage">Utilisation</a>
+      <a href="#panel">Panneau web</a>
       <a href="#commands">Commandes</a>
       <a class="gh" href="https://github.com/CharlesGamligo/lnmp" rel="noopener">GitHub ↗</a>
     </nav>
@@ -231,7 +246,7 @@
     <div>
       <span class="eyebrow">Nginx · MariaDB · PHP · SSL</span>
       <h1>Votre pile web,<br><span class="grad">en une commande.</span></h1>
-      <p class="lede"><b>LNMP</b> installe et administre une pile web complète sur Ubuntu&nbsp;: vhosts Nginx, certificats HTTPS et bases de données, depuis un seul outil en ligne de commande.</p>
+      <p class="lede"><b>LNMP</b> installe et administre une pile web complète sur Ubuntu&nbsp;: vhosts Nginx, domaines multiples, HTTPS et bases de données — en ligne de commande <b>ou</b> depuis un panneau web à l'adresse <code style="font-family:var(--mono)">admin.lnmp</code>.</p>
       <div class="cta-row">
         <a class="btn btn-primary" href="#install">Installer maintenant</a>
         <a class="btn btn-ghost" href="#commands">Voir les commandes</a>
@@ -257,14 +272,26 @@
   <div class="wrap">
     <div class="sec-head">
       <span class="eyebrow">Installation</span>
-      <h2>Ajoutez le dépôt, installez le paquet</h2>
-      <p>Disponible via le dépôt APT Mawena. Les dépendances (Nginx, MariaDB, Certbot…) sont gérées automatiquement.</p>
+      <h2>Documentation d'installation</h2>
+      <p>Deux étapes : installer le paquet depuis le dépôt APT, puis lancer l'installation de la pile. Les dépendances (Nginx, MariaDB, PHP, Certbot) sont gérées automatiquement.</p>
     </div>
+
+    <p class="doc-step-label"><span class="doc-num">1</span> Ajouter le dépôt et installer le paquet</p>
     <div class="cmd">
       <span class="prmpt">$</span>
       <code id="install-cmd">echo "deb [trusted=yes] https://mawena.cloud/repo /" | sudo tee /etc/apt/sources.list.d/mawena.list && sudo apt update && sudo apt install lnmp</code>
       <button class="copy" data-copy="install-cmd">Copier</button>
     </div>
+
+    <p class="doc-step-label"><span class="doc-num">2</span> Installer et configurer la pile</p>
+    <div class="cmd">
+      <span class="prmpt">$</span>
+      <code id="install-cmd2">sudo lnmp install</code>
+      <button class="copy" data-copy="install-cmd2">Copier</button>
+    </div>
+    <p class="doc-note">L'installation est <b>idempotente</b> (elle reprend à la dernière étape réussie) et vous demande deux choses : le <b>domaine par défaut</b> (ex. <code>mawena.cloud</code>, ou <code>test</code> pour un usage local) et le <b>mot de passe du panneau web</b>. À la fin, le panneau est accessible sur <code>http://admin.lnmp</code>.</p>
+
+    <p class="doc-note doc-tip"><b>Prérequis :</b> Ubuntu 22.04+ avec accès <code>sudo</code>. Pour le HTTPS, le domaine doit pointer vers le serveur.</p>
   </div>
 </section>
 
@@ -347,6 +374,62 @@
   </div>
 </section>
 
+<section id="usage">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Utilisation</span>
+      <h2>Documentation d'utilisation</h2>
+      <p>Toutes les actions sont accessibles de trois façons équivalentes : le menu interactif, la ligne de commande, et le panneau web.</p>
+    </div>
+
+    <div class="doc-grid">
+      <div class="doc-block">
+        <h3>Menu interactif ou commandes directes</h3>
+        <p>Lancez <code>sudo lnmp</code> sans argument pour le menu numéroté, ou utilisez les commandes directement pour scripter.</p>
+        <div class="cmd"><span class="prmpt">$</span><code>sudo lnmp add --id blog --domain test</code></div>
+      </div>
+      <div class="doc-block">
+        <h3>Domaines multiples (local façon Laragon)</h3>
+        <p>Déclarez un domaine <b>local</b> : LNMP gère alors <code>/etc/hosts</code> automatiquement pour chaque application.</p>
+        <div class="cmd"><span class="prmpt">$</span><code>sudo lnmp domain add test --local</code></div>
+      </div>
+      <div class="doc-block">
+        <h3>Ajouter une application</h3>
+        <p>Choisissez le domaine de base : l'URL devient <code>&lt;id&gt;.&lt;domaine&gt;</code> (ou le domaine racine avec <code>--apex</code>). Pour un domaine local, l'entrée hosts est créée toute seule.</p>
+        <div class="cmd"><span class="prmpt">$</span><code>sudo lnmp add --id shop --domain mawena.cloud</code></div>
+      </div>
+      <div class="doc-block">
+        <h3>Bases de données</h3>
+        <p>Une commande crée la base, l'utilisateur dédié et un mot de passe (affiché une seule fois).</p>
+        <div class="cmd"><span class="prmpt">$</span><code>sudo lnmp db-create shop</code></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="panel">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow">Interface web</span>
+      <h2>Piloter LNMP depuis le navigateur</h2>
+      <p>L'installation déploie un panneau d'administration : applications, SSL, domaines, bases de données et opérations système, dans une interface conviviale.</p>
+    </div>
+
+    <div class="panel-cta">
+      <span class="pc-url">http://admin.lnmp</span>
+      <span class="pc-text">Lié à 127.0.0.1 et protégé par mot de passe. En local, ajoutez <code>127.0.0.1&nbsp;admin.lnmp</code> à votre poste ; sur un VPS, passez par un tunnel SSH.</span>
+    </div>
+
+    <p class="doc-step-label"><span class="doc-num">↳</span> Accès distant à un VPS (tunnel SSH)</p>
+    <div class="cmd">
+      <span class="prmpt">$</span>
+      <code id="tunnel-cmd">ssh -L 8080:127.0.0.1:80 utilisateur@mon-vps   # puis ouvrez http://localhost:8080</code>
+      <button class="copy" data-copy="tunnel-cmd">Copier</button>
+    </div>
+    <p class="doc-note">Le panneau exige une authentification. Réinitialisez le mot de passe à tout moment avec <code>sudo lnmp set-password</code>.</p>
+  </div>
+</section>
+
 <section id="commands">
   <div class="wrap">
     <div class="sec-head">
@@ -372,6 +455,11 @@
           <tr><td><code>lnmp delete &lt;id&gt;</code></td><td>Supprimer une application.</td></tr>
           <tr><td><code>lnmp reload-app</code></td><td>Reconstruire le registre depuis Nginx.</td></tr>
 
+          <tr class="cat-row"><td colspan="2">Domaines</td></tr>
+          <tr><td><code>lnmp domain list</code></td><td>Lister les domaines de base.</td></tr>
+          <tr><td><code>lnmp domain add &lt;nom&gt;</code></td><td>Ajouter un domaine (<code>--local</code> pour du local).</td></tr>
+          <tr><td><code>lnmp domain remove &lt;nom&gt;</code></td><td>Retirer un domaine de base.</td></tr>
+
           <tr class="cat-row"><td colspan="2">SSL — Let's Encrypt</td></tr>
           <tr><td><code>lnmp add-ssl &lt;id&gt;</code></td><td>Générer un certificat SSL + redirection HTTPS.</td></tr>
           <tr><td><code>lnmp remove-ssl &lt;id&gt;</code></td><td>Retirer un certificat SSL.</td></tr>
@@ -380,6 +468,9 @@
           <tr><td><code>lnmp db-create &lt;nom&gt;</code></td><td>Créer une base + utilisateur dédié.</td></tr>
           <tr><td><code>lnmp db-list</code></td><td>Lister les bases de données.</td></tr>
           <tr><td><code>lnmp db-drop &lt;nom&gt;</code></td><td>Supprimer une base de données.</td></tr>
+
+          <tr class="cat-row"><td colspan="2">Interface web</td></tr>
+          <tr><td><code>lnmp set-password</code></td><td>Définir le mot de passe du panneau (admin.lnmp).</td></tr>
         </tbody>
       </table>
     </div>
@@ -391,6 +482,8 @@
     <span class="brand" style="font-size:14px"><span class="stack-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span> <b>lnmp</b></span>
     <a href="https://github.com/CharlesGamligo/lnmp" rel="noopener">GitHub</a>
     <a href="#install">Installation</a>
+    <a href="#usage">Utilisation</a>
+    <a href="#panel">Panneau web</a>
     <a href="#commands">Commandes</a>
     <span class="sep">© 2026 Charles Gamligo · Licence MIT</span>
   </div>
@@ -418,16 +511,16 @@
     var lines = [
       {h: '<span class="c-prompt">root@mawena</span>:<span class="c-blue">~</span>$ <span class="c-cmd">sudo lnmp install</span>'},
       {h: '<span class="c-blue">=== Début de l\'installation de la pile LNMP ===</span>'},
-      {h: '<span class="c-yellow">[1/7]</span> Configuration système et \'acl\'…'},
-      {h: '<span class="c-yellow">[2/7]</span> Installation de Nginx…'},
-      {h: '<span class="c-yellow">[3/7]</span> Installation de MariaDB…'},
-      {h: '<span class="c-yellow">[4/7]</span> Installation PHP 8.3…'},
-      {h: '<span class="c-yellow">[5/7]</span> Installation de Certbot…'},
-      {h: '<span class="c-yellow">[6/7]</span> Droits et groupe webdev…'},
-      {h: '<span class="c-yellow">[7/7]</span> Configuration du vhost témoin…'},
-      {h: '<span class="c-green">=== LNMP Installée ! ===</span>'},
-      {h: '<span class="c-prompt">root@mawena</span>:<span class="c-blue">~</span>$ <span class="c-cmd">sudo lnmp doctor</span>'},
-      {h: '<span class="c-green">●</span> nginx : actif   <span class="c-green">●</span> mariadb : actif   <span class="c-green">●</span> php8.3-fpm : actif'},
+      {h: '<span class="c-yellow">[1/8]</span> Configuration système et \'acl\'…'},
+      {h: '<span class="c-yellow">[2/8]</span> Installation de Nginx…'},
+      {h: '<span class="c-yellow">[3/8]</span> Installation de MariaDB…'},
+      {h: '<span class="c-yellow">[4/8]</span> Installation PHP 8.3…'},
+      {h: '<span class="c-yellow">[5/8]</span> Installation de Certbot…'},
+      {h: '<span class="c-yellow">[6/8]</span> Droits et groupe webdev…'},
+      {h: '<span class="c-yellow">[7/8]</span> Configuration du vhost témoin…'},
+      {h: '<span class="c-yellow">[8/8]</span> Interface web d\'administration…'},
+      {h: '<span class="c-green">=== LNMP installée ===</span>'},
+      {h: 'Panneau web : <span class="c-blue">http://admin.lnmp</span>'},
     ];
 
     var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;

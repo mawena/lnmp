@@ -14,10 +14,13 @@ pour Ubuntu (Nginx + MariaDB + PHP + Certbot).
 ## En bref
 
 ```bash
-sudo lnmp install        # Installer la pile
-sudo lnmp add            # Ajouter une application
-sudo lnmp db-create app  # Créer sa base de données
-sudo lnmp doctor         # Diagnostiquer
+sudo lnmp install                   # Installer la pile (+ panneau web admin.lnmp)
+sudo lnmp domain add test --local   # Un domaine local (façon Laragon)
+sudo lnmp add --id blog --domain test  # Ajouter une application
+sudo lnmp db-create blog            # Créer sa base de données
+sudo lnmp doctor                    # Diagnostiquer
 ```
 
 > LNMP doit être exécuté avec les privilèges `root` (via `sudo`).
+> Une **interface web** est également disponible sur `http://admin.lnmp` après
+> installation — voir [usage.md](usage.md#panneau-web-dadministration).
