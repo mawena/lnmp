@@ -30,6 +30,7 @@ APPS_REGISTRY="/etc/nginx/lnmp_apps.list"
 HOSTS_FILE="/etc/hosts"
 WEBUI_SRC="/usr/share/lnmp/webui"
 WEBUI_DEST="/var/www/html/lnmp"
+ADMIN_HOST="admin.lnmp"
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -571,6 +572,79 @@ db_drop() {
 }
 
 # ==============================================================================
+# INTERFACE WEB D'ADMINISTRATION
+# ==============================================================================
+write_admin_vhost() {
+    cat > /etc/nginx/sites-available/admin.lnmp << EOF
+# Panneau d'administration LNMP — lié à 127.0.0.1 (accès distant via tunnel SSH).
+server {
+    listen 127.0.0.1:80;
+    server_name ${ADMIN_HOST};
+    root ${WEBUI_DEST};
+    index index.html;
+    charset utf-8;
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:${ADMIN_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+    }
+    location / { try_files \$uri \$uri/ /index.html; }
+}
+EOF
+}
+
+# Définit (ou réinitialise) le mot de passe du panneau web.
+set_admin_password() {
+    local pass="${OPT[password]:-$1}"
+    if [ -z "$pass" ] && [ "$JSON_MODE" -eq 0 ]; then
+        read -r -s -p "Mot de passe admin du panneau web : " pass; echo
+        local pass2; read -r -s -p "Confirmez le mot de passe : " pass2; echo
+        [ "$pass" != "$pass2" ] && { emit_result err "Les mots de passe ne correspondent pas."; return 1; }
+    fi
+    [ -z "$pass" ] && { emit_result err "Mot de passe vide."; return 1; }
+
+    local hash secret
+    hash=$(python3 -c 'import hashlib,os,sys; s=os.urandom(16); i=200000; dk=hashlib.pbkdf2_hmac("sha256", sys.argv[1].encode(), s, i); print("pbkdf2_sha256$%d$%s$%s" % (i, s.hex(), dk.hex()))' "$pass")
+    secret=$(grep -E '^SESSION_SECRET=' "$ADMIN_CONF" 2>/dev/null | cut -d'"' -f2)
+    [ -z "$secret" ] && secret=$(python3 -c 'import secrets; print(secrets.token_hex(32))')
+
+    cat > "$ADMIN_CONF" << EOF
+PASSWORD_HASH="$hash"
+SESSION_SECRET="$secret"
+EOF
+    chmod 600 "$ADMIN_CONF"
+    emit_result ok "Mot de passe admin défini."
+}
+
+install_web_admin() {
+    echo -e "${YELLOW}[8/8] Interface web d'administration...${NC}"
+
+    # 1. Déployer le panneau statique
+    mkdir -p "$WEBUI_DEST"
+    [ -d "$WEBUI_SRC" ] && cp -a "$WEBUI_SRC/." "$WEBUI_DEST/"
+    chown -R www-data:webdev "$WEBUI_DEST" 2>/dev/null || true
+
+    # 2. Mot de passe admin (si absent)
+    if [ ! -f "$ADMIN_CONF" ]; then
+        echo -e "${BLUE}Définissez le mot de passe du panneau web (http://${ADMIN_HOST})${NC}"
+        set_admin_password
+    fi
+
+    # 3. Vhost admin (localhost) + /etc/hosts
+    write_admin_vhost
+    ln -sf /etc/nginx/sites-available/admin.lnmp /etc/nginx/sites-enabled/
+    hosts_add "$ADMIN_HOST"
+
+    # 4. Démon d'administration
+    systemctl enable --now lnmp-admin 2>/dev/null
+
+    reload_nginx
+    echo -e "${GREEN}Panneau web prêt : http://${ADMIN_HOST}${NC}"
+}
+
+# ==============================================================================
 # INSTALLATION / DÉSINSTALLATION
 # ==============================================================================
 install_lnmp() {
@@ -629,7 +703,7 @@ install_lnmp() {
         set_state 6
     fi
     if [ "$current_step" -le 7 ]; then
-        echo -e "${YELLOW}[7/7] Application témoin...${NC}"
+        echo -e "${YELLOW}[7/8] Application témoin...${NC}"
         local initial_app_path="/var/www/html/example/public"
         mkdir -p "$initial_app_path"
         [ -f "$initial_app_path/index.php" ] || echo "<?php echo 'Bienvenue sur LNMP !'; ?>" > "$initial_app_path/index.php"
@@ -639,8 +713,14 @@ install_lnmp() {
         reload_nginx
         set_state 7
     fi
+    if [ "$current_step" -le 8 ]; then
+        install_web_admin
+        set_state 8
+    fi
 
-    echo -e "${GREEN}=== LNMP installée (domaine par défaut : ${DEFAULT_DOMAIN}) ===${NC}"
+    echo -e "${GREEN}=== LNMP installée ===${NC}"
+    echo -e "Domaine par défaut : ${BLUE}${DEFAULT_DOMAIN}${NC}"
+    echo -e "Panneau web        : ${BLUE}http://${ADMIN_HOST}${NC} (ajoutez '127.0.0.1 ${ADMIN_HOST}' à votre poste, ou tunnel SSH)"
 }
 
 uninstall_lnmp() {
@@ -648,6 +728,13 @@ uninstall_lnmp() {
         read -p "Voulez-vous vraiment TOUT supprimer (pile + configuration) ? (y/n) : " confirm
         [[ "$confirm" =~ ^[Yy]$ ]] || return 1
     fi
+    # Interface web d'administration
+    systemctl disable --now lnmp-admin 2>/dev/null || true
+    rm -f /etc/nginx/sites-enabled/admin.lnmp /etc/nginx/sites-available/admin.lnmp
+    rm -rf "$WEBUI_DEST"
+    # Nettoyage des entrées /etc/hosts gérées par lnmp
+    sed -i '/#[[:space:]]*lnmp[[:space:]]*$/d' "$HOSTS_FILE" 2>/dev/null || true
+
     systemctl stop nginx mariadb "php${PHP_VERSION}-fpm" 2>/dev/null || true
     apt-get purge -y nginx mariadb-server mariadb-client "php${PHP_VERSION}*" certbot python3-certbot-nginx acl
     apt-get autoremove -y
@@ -698,6 +785,9 @@ Bases de données :
   db-list               Lister les bases
   db-drop <nom>         Supprimer une base (--yes pour ne pas confirmer)
 
+Interface web :
+  set-password          Définir le mot de passe du panneau (http://admin.lnmp)
+
 Sans commande : menu interactif.
 EOF
 }
@@ -734,6 +824,7 @@ if [ $# -gt 0 ]; then
         db-create)   db_create "$arg"; exit $? ;;
         db-list)     db_list; exit $? ;;
         db-drop)     db_drop "$arg"; exit $? ;;
+        set-password) set_admin_password "$arg"; exit $? ;;
         *)           emit_result err "Commande inconnue : $cmd"; [ "$JSON_MODE" -eq 0 ] && show_help; exit 1 ;;
     esac
 fi
@@ -761,6 +852,7 @@ while true; do
     echo "13 - Lister les domaines"
     echo "14 - Ajouter un domaine"
     echo "15 - Retirer un domaine"
+    echo "16 - Changer le mot de passe du panneau web"
     echo " D - Diagnostic de la pile (doctor)"
     echo " R - Reconstruire le registre (reload-app)"
     echo " 0 - Quitter"
@@ -783,6 +875,7 @@ while true; do
         13) domain_list ;;
         14) domain_add_interactive ;;
         15) read -p "Nom du domaine à retirer : " dn; domain_remove "$dn" ;;
+        16) set_admin_password ;;
         [Dd]) doctor ;;
         [Rr]) reload_app ;;
         0)  exit 0 ;;

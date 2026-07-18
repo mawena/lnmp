@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LNMP — Administration</title>
+<style>
+  :root{
+    --ink:#0E1420; --ink-2:#131B29; --surface:#161E2E; --surface-2:#1C2638;
+    --line:#26324a; --line-soft:#1e293b; --text:#E6EDF6; --muted:#8A99AE; --muted-2:#64748b;
+    --coral:#FF6B4A; --coral-dim:#ff8b70; --emerald:#3FB984; --amber:#F5B544; --sky:#5AA9E6; --red:#ff5f57;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ink);color:var(--text);font-family:var(--sans);line-height:1.55;-webkit-font-smoothing:antialiased}
+  a{color:inherit}
+  button{font-family:inherit;cursor:pointer}
+  :focus-visible{outline:2px solid var(--sky);outline-offset:2px;border-radius:6px}
+  .hidden{display:none!important}
+
+  /* ---------- Login ---------- */
+  .login-wrap{min-height:100vh;display:grid;place-items:center;padding:24px;
+    background:radial-gradient(900px 480px at 70% -10%,rgba(255,107,74,.10),transparent 60%),var(--ink)}
+  .login-card{width:100%;max-width:380px;background:linear-gradient(180deg,var(--surface),var(--ink-2));
+    border:1px solid var(--line-soft);border-radius:16px;padding:34px}
+  .brand{display:flex;align-items:center;gap:11px;font-family:var(--mono);font-weight:700}
+  .stack-mark{display:grid;gap:3px}
+  .stack-mark span{display:block;height:4px;border-radius:1px}
+  .stack-mark span:nth-child(1){background:var(--coral);width:20px}
+  .stack-mark span:nth-child(2){background:var(--amber);width:15px}
+  .stack-mark span:nth-child(3){background:var(--emerald);width:18px}
+  .stack-mark span:nth-child(4){background:var(--sky);width:12px}
+  .login-card h1{font-size:19px;margin:22px 0 4px;letter-spacing:-.01em}
+  .login-card p{color:var(--muted);font-size:14px;margin:0 0 22px}
+  label{display:block;font-size:12px;color:var(--muted);margin:0 0 7px;font-family:var(--mono);letter-spacing:.04em;text-transform:uppercase}
+  input[type=text],input[type=password],select{width:100%;background:var(--ink-2);border:1px solid var(--line);
+    border-radius:10px;color:var(--text);padding:11px 13px;font-size:14px;font-family:var(--sans)}
+  input:focus,select:focus{border-color:var(--sky);outline:none}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid transparent;
+    border-radius:10px;padding:11px 18px;font-weight:600;font-size:14px;transition:transform .1s,background .15s,border-color .15s}
+  .btn:hover{transform:translateY(-1px)}
+  .btn-primary{background:var(--coral);color:#1a0d08}
+  .btn-primary:hover{background:var(--coral-dim)}
+  .btn-ghost{background:transparent;border-color:var(--line);color:var(--text)}
+  .btn-ghost:hover{border-color:var(--muted)}
+  .btn-danger{background:transparent;border-color:rgba(255,95,87,.5);color:#ff8f88}
+  .btn-danger:hover{background:rgba(255,95,87,.12)}
+  .btn-sm{padding:6px 11px;font-size:12.5px;border-radius:8px}
+  .btn-block{width:100%}
+  .err{color:#ff8f88;font-size:13px;margin-top:12px;min-height:18px}
+
+  /* ---------- App shell ---------- */
+  .shell{display:grid;grid-template-columns:236px 1fr;min-height:100vh}
+  aside{background:var(--ink-2);border-right:1px solid var(--line-soft);padding:22px 16px;display:flex;flex-direction:column;gap:6px}
+  aside .brand{padding:6px 10px 20px}
+  nav.side a{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:9px;color:var(--muted);
+    font-size:14.5px;font-weight:500;cursor:pointer;transition:.12s}
+  nav.side a:hover{background:var(--surface);color:var(--text)}
+  nav.side a.active{background:var(--surface-2);color:var(--text)}
+  nav.side a .ic{width:18px;text-align:center;font-family:var(--mono)}
+  aside .foot{margin-top:auto;padding-top:14px;border-top:1px solid var(--line-soft)}
+  main{padding:34px 40px;max-width:960px}
+  @media(max-width:760px){.shell{grid-template-columns:1fr}aside{flex-direction:row;flex-wrap:wrap;align-items:center}
+    nav.side{display:flex;flex-wrap:wrap;gap:4px}aside .brand{padding:6px 10px}aside .foot{margin:0;border:0;padding:0}main{padding:22px 18px}}
+
+  h2.view-title{font-size:24px;letter-spacing:-.02em;margin:0 0 4px}
+  .view-sub{color:var(--muted);font-size:14px;margin:0 0 26px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--coral)}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:28px}
+  .stat{background:linear-gradient(180deg,var(--surface),var(--ink-2));border:1px solid var(--line-soft);border-radius:13px;padding:18px}
+  .stat .k{font-size:12px;color:var(--muted-2);font-family:var(--mono);text-transform:uppercase;letter-spacing:.08em}
+  .stat .v{font-size:26px;font-weight:700;margin-top:6px;letter-spacing:-.02em}
+  .pill{display:inline-flex;align-items:center;gap:7px;font-size:13px}
+  .dot{width:9px;height:9px;border-radius:50%}
+  .dot.on{background:var(--emerald)} .dot.off{background:var(--red)}
+
+  .panel{background:linear-gradient(180deg,var(--surface),var(--ink-2));border:1px solid var(--line-soft);border-radius:14px;overflow:hidden;margin-bottom:22px}
+  .panel .ph{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--line-soft)}
+  .panel .ph h3{margin:0;font-size:15px}
+  .panel .pb{padding:6px 0}
+  table{border-collapse:collapse;width:100%;font-size:14px}
+  th{text-align:left;font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted-2);padding:11px 20px;border-bottom:1px solid var(--line)}
+  td{padding:12px 20px;border-bottom:1px solid var(--line-soft);color:var(--muted);vertical-align:middle}
+  tr:last-child td{border-bottom:0}
+  td.id{color:var(--text);font-family:var(--mono);font-size:13px}
+  td .actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .tag{font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid var(--line)}
+  .tag.on{color:var(--emerald);border-color:rgba(63,185,132,.4)}
+  .tag.off{color:var(--muted-2)}
+  .tag.local{color:var(--amber);border-color:rgba(245,181,68,.4)}
+  .tag.remote{color:var(--sky);border-color:rgba(90,169,230,.4)}
+  .empty{padding:26px 20px;color:var(--muted-2);text-align:center;font-size:14px}
+
+  .form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;padding:16px 20px}
+  .form-row .full{grid-column:1/-1}
+  .checkbox{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:14px;font-family:var(--sans);
+    text-transform:none;letter-spacing:0;margin:0}
+  .checkbox input{width:auto}
+  .form-foot{display:flex;justify-content:flex-end;gap:10px;padding:0 20px 18px}
+
+  /* ---------- Toasts ---------- */
+  #toasts{position:fixed;right:20px;bottom:20px;display:flex;flex-direction:column;gap:10px;z-index:100}
+  .toast{background:var(--surface-2);border:1px solid var(--line);border-left-width:3px;border-radius:10px;
+    padding:12px 16px;font-size:14px;max-width:360px;box-shadow:0 18px 40px -18px rgba(0,0,0,.8);animation:slide .2s ease}
+  .toast.ok{border-left-color:var(--emerald)} .toast.err{border-left-color:var(--red)}
+  @keyframes slide{from{opacity:0;transform:translateY(8px)}}
+
+  /* ---------- Modal ---------- */
+  .modal-bg{position:fixed;inset:0;background:rgba(4,8,16,.7);display:grid;place-items:center;z-index:90;padding:20px}
+  .modal{background:linear-gradient(180deg,var(--surface),var(--ink-2));border:1px solid var(--line);border-radius:14px;padding:26px;max-width:420px;width:100%}
+  .modal h3{margin:0 0 8px;font-size:17px}
+  .modal p{color:var(--muted);font-size:14px;margin:0 0 20px}
+  .modal .mf{display:flex;justify-content:flex-end;gap:10px}
+  .cred{font-family:var(--mono);font-size:13px;background:var(--ink);border:1px solid var(--line);border-radius:8px;padding:12px;margin:6px 0;word-break:break-all}
+  .cred b{color:var(--amber)}
+</style>
+</head>
+<body>
+
+<!-- ====================== LOGIN ====================== -->
+<div id="login" class="login-wrap">
+  <form class="login-card" id="login-form">
+    <div class="brand"><span class="stack-mark"><span></span><span></span><span></span><span></span></span> lnmp <span style="color:var(--muted-2);font-weight:500">admin</span></div>
+    <h1>Administration</h1>
+    <p>Panneau de gestion de votre pile LNMP.</p>
+    <label for="pw">Mot de passe</label>
+    <input type="password" id="pw" autocomplete="current-password" autofocus>
+    <div class="err" id="login-err"></div>
+    <button class="btn btn-primary btn-block" type="submit" style="margin-top:6px">Se connecter</button>
+  </form>
+</div>
+
+<!-- ====================== APP SHELL ====================== -->
+<div id="app" class="shell hidden">
+  <aside>
+    <div class="brand"><span class="stack-mark"><span></span><span></span><span></span><span></span></span> lnmp</div>
+    <nav class="side" id="nav">
+      <a data-view="dashboard" class="active"><span class="ic">◧</span> Tableau de bord</a>
+      <a data-view="apps"><span class="ic">⧉</span> Applications</a>
+      <a data-view="domains"><span class="ic">⌂</span> Domaines</a>
+      <a data-view="databases"><span class="ic">⛁</span> Bases de données</a>
+      <a data-view="system"><span class="ic">⚙</span> Système</a>
+    </nav>
+    <div class="foot">
+      <a id="logout" class="btn btn-ghost btn-sm btn-block" style="justify-content:flex-start">↩ Déconnexion</a>
+    </div>
+  </aside>
+  <main id="content"></main>
+</div>
+
+<div id="toasts"></div>
+<div id="modal-root"></div>
+
+<script>
+"use strict";
+
+/* ------------------------------- API ---------------------------------- */
+async function api(method, path, body){
+  const opt = { method, credentials:'same-origin', headers:{} };
+  if(body){ opt.headers['Content-Type']='application/json'; opt.body=JSON.stringify(body); }
+  let res;
+  try { res = await fetch('/api'+path, opt); }
+  catch(e){ return { status:0, data:{ok:false,message:"Démon injoignable."} }; }
+  let data={}; try{ data = await res.json(); }catch(e){}
+  if(res.status===401 && path!=='/login'){ showLogin(); }
+  return { status:res.status, data };
+}
+
+/* ------------------------------ Toasts -------------------------------- */
+function toast(msg, ok=true){
+  const t=document.createElement('div');
+  t.className='toast '+(ok?'ok':'err'); t.textContent=msg;
+  document.getElementById('toasts').appendChild(t);
+  setTimeout(()=>{ t.style.opacity='0'; t.style.transition='opacity .3s'; setTimeout(()=>t.remove(),300); }, 3600);
+}
+function result(r, okMsg){
+  const d=r.data||{};
+  if(d.ok){ toast(okMsg || d.message || 'Fait.', true); return true; }
+  toast(d.message || 'Erreur.', false); return false;
+}
+
+/* ------------------------------ Modal --------------------------------- */
+function confirmModal(title, text, danger=true){
+  return new Promise(resolve=>{
+    const root=document.getElementById('modal-root');
+    root.innerHTML=`<div class="modal-bg"><div class="modal">
+      <h3>${esc(title)}</h3><p>${esc(text)}</p>
+      <div class="mf"><button class="btn btn-ghost btn-sm" id="mno">Annuler</button>
+      <button class="btn ${danger?'btn-danger':'btn-primary'} btn-sm" id="myes">Confirmer</button></div></div></div>`;
+    root.querySelector('#mno').onclick=()=>{ root.innerHTML=''; resolve(false); };
+    root.querySelector('#myes').onclick=()=>{ root.innerHTML=''; resolve(true); };
+  });
+}
+function infoModal(title, html){
+  const root=document.getElementById('modal-root');
+  root.innerHTML=`<div class="modal-bg"><div class="modal">
+    <h3>${esc(title)}</h3><div>${html}</div>
+    <div class="mf" style="margin-top:18px"><button class="btn btn-primary btn-sm" id="mok">J'ai noté</button></div></div></div>`;
+  root.querySelector('#mok').onclick=()=>{ root.innerHTML=''; };
+}
+function esc(s){ return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ------------------------------ Auth ---------------------------------- */
+function showLogin(){ document.getElementById('app').classList.add('hidden'); document.getElementById('login').classList.remove('hidden'); }
+function showApp(){ document.getElementById('login').classList.add('hidden'); document.getElementById('app').classList.remove('hidden'); render('dashboard'); }
+
+document.getElementById('login-form').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const pw=document.getElementById('pw').value;
+  const errEl=document.getElementById('login-err'); errEl.textContent='';
+  const r=await api('POST','/login',{password:pw});
+  if(r.data && r.data.ok){ document.getElementById('pw').value=''; showApp(); }
+  else { errEl.textContent = (r.data && r.data.message) || 'Connexion impossible.'; }
+});
+document.getElementById('logout').addEventListener('click', async ()=>{ await api('POST','/logout'); showLogin(); });
+
+/* --------------------------- Navigation ------------------------------- */
+document.getElementById('nav').addEventListener('click', e=>{
+  const a=e.target.closest('a[data-view]'); if(!a) return;
+  document.querySelectorAll('#nav a').forEach(x=>x.classList.remove('active'));
+  a.classList.add('active'); render(a.dataset.view);
+});
+
+const content=()=>document.getElementById('content');
+function render(view){
+  document.querySelectorAll('#nav a').forEach(x=>x.classList.toggle('active', x.dataset.view===view));
+  const fn={dashboard:viewDashboard,apps:viewApps,domains:viewDomains,databases:viewDatabases,system:viewSystem}[view];
+  if(fn) fn();
+}
+
+/* --------------------------- Vues ------------------------------------- */
+async function viewDashboard(){
+  content().innerHTML=`<span class="eyebrow">Vue d'ensemble</span><h2 class="view-title">Tableau de bord</h2>
+    <p class="view-sub">État en temps réel de la pile LNMP.</p><div id="dash">Chargement…</div>`;
+  const r=await api('GET','/status'); const d=r.data||{};
+  if(!d.ok){ document.getElementById('dash').innerHTML=`<div class="empty">Impossible de récupérer l'état.</div>`; return; }
+  const s=d.services||{};
+  const svc=(name,on)=>`<div class="stat"><div class="k">${name}</div><div class="v"><span class="pill"><span class="dot ${on?'on':'off'}"></span>${on?'Actif':'Arrêté'}</span></div></div>`;
+  document.getElementById('dash').innerHTML=`
+    <div class="cards">
+      ${svc('Nginx',s.nginx)} ${svc('MariaDB',s.mariadb)} ${svc('PHP-FPM',s.php)}
+      <div class="stat"><div class="k">Config Nginx</div><div class="v"><span class="pill"><span class="dot ${d.nginx_config?'on':'off'}"></span>${d.nginx_config?'Valide':'Erreur'}</span></div></div>
+    </div>
+    <div class="cards">
+      <div class="stat"><div class="k">Applications</div><div class="v">${d.apps??0}</div></div>
+      <div class="stat"><div class="k">Domaines</div><div class="v">${d.domains??0}</div></div>
+      <div class="stat"><div class="k">Version</div><div class="v" style="font-size:18px;font-family:var(--mono)">${esc(d.version||'—')}</div></div>
+    </div>`;
+}
+
+async function viewApps(){
+  content().innerHTML=`<span class="eyebrow">Hébergement</span><h2 class="view-title">Applications</h2>
+    <p class="view-sub">Vhosts Nginx, activation, SSL et suppression.</p>
+    <div class="panel"><div class="ph"><h3>Ajouter une application</h3></div>
+      <div class="form-row">
+        <div><label>Identifiant</label><input type="text" id="a-id" placeholder="blog"></div>
+        <div><label>Domaine de base</label><select id="a-domain"></select></div>
+        <div><label>Sous-domaine (option)</label><input type="text" id="a-sub" placeholder="= identifiant"></div>
+        <div class="full"><label>Chemin (option)</label><input type="text" id="a-path" placeholder="/var/www/html/blog/public"></div>
+        <label class="checkbox full"><input type="checkbox" id="a-apex"> Utiliser le domaine racine (apex) au lieu d'un sous-domaine</label>
+      </div>
+      <div class="form-foot"><button class="btn btn-primary btn-sm" id="a-add">Ajouter</button></div>
+    </div>
+    <div class="panel"><div class="ph"><h3>Applications existantes</h3><button class="btn btn-ghost btn-sm" id="a-refresh">Actualiser</button></div>
+      <div class="pb" id="apps-list">Chargement…</div></div>`;
+
+  // Remplir la liste des domaines
+  const dr=await api('GET','/domains'); const doms=(dr.data&&dr.data.domains)||[];
+  const sel=document.getElementById('a-domain');
+  sel.innerHTML = doms.length ? doms.map(d=>`<option value="${esc(d.name)}">${esc(d.name)} (${d.type==='local'?'local':'distant'})</option>`).join('')
+                              : `<option value="">Aucun domaine — créez-en un</option>`;
+  if(dr.data&&dr.data.default) sel.value=dr.data.default;
+
+  document.getElementById('a-add').onclick=addApp;
+  document.getElementById('a-refresh').onclick=loadApps;
+  loadApps();
+}
+async function loadApps(){
+  const r=await api('GET','/apps'); const apps=(r.data&&r.data.apps)||[];
+  const el=document.getElementById('apps-list');
+  if(!apps.length){ el.innerHTML=`<div class="empty">Aucune application enregistrée.</div>`; return; }
+  el.innerHTML=`<table><thead><tr><th>ID</th><th>Domaine</th><th>Statut</th><th></th></tr></thead><tbody>${
+    apps.map(a=>`<tr>
+      <td class="id">${esc(a.id)}</td>
+      <td><a href="http://${esc(a.domain)}" target="_blank" rel="noopener">${esc(a.domain)}</a></td>
+      <td><span class="tag ${a.active?'on':'off'}">${a.active?'actif':'inactif'}</span></td>
+      <td><div class="actions">
+        ${a.active?`<button class="btn btn-ghost btn-sm" data-act="disable" data-id="${esc(a.id)}">Désactiver</button>`
+                  :`<button class="btn btn-ghost btn-sm" data-act="enable" data-id="${esc(a.id)}">Activer</button>`}
+        <button class="btn btn-ghost btn-sm" data-act="ssl" data-id="${esc(a.id)}">SSL</button>
+        <button class="btn btn-danger btn-sm" data-act="delete" data-id="${esc(a.id)}">Supprimer</button>
+      </div></td></tr>`).join('')
+  }</tbody></table>`;
+  el.querySelectorAll('button[data-act]').forEach(b=>b.onclick=()=>appAction(b.dataset.act,b.dataset.id));
+}
+async function addApp(){
+  const id=document.getElementById('a-id').value.trim();
+  const domain=document.getElementById('a-domain').value;
+  const sub=document.getElementById('a-sub').value.trim();
+  const path=document.getElementById('a-path').value.trim();
+  const apex=document.getElementById('a-apex').checked;
+  if(!id){ toast('Identifiant requis.',false); return; }
+  const body={id,domain}; if(apex)body.apex=true; else if(sub)body.sub=sub; if(path)body.path=path;
+  const r=await api('POST','/apps',body);
+  if(result(r,`Application « ${id} » ajoutée.`)){ document.getElementById('a-id').value=''; document.getElementById('a-sub').value=''; document.getElementById('a-path').value=''; loadApps(); }
+}
+async function appAction(act,id){
+  if(act==='delete'){ if(!await confirmModal('Supprimer l\'application',`« ${id} » et son vhost seront supprimés définitivement.`))return;
+    const r=await api('DELETE','/apps/'+encodeURIComponent(id)); result(r,`« ${id} » supprimée.`); loadApps(); return; }
+  if(act==='ssl'){ const email=prompt('Email pour les alertes d\'expiration (optionnel) :')||'';
+    const r=await api('POST','/apps/'+encodeURIComponent(id)+'/ssl',{email}); result(r,`SSL demandé pour « ${id} ».`); return; }
+  const r=await api('POST','/apps/'+encodeURIComponent(id)+'/'+act); result(r); loadApps();
+}
+
+async function viewDomains(){
+  content().innerHTML=`<span class="eyebrow">Résolution</span><h2 class="view-title">Domaines</h2>
+    <p class="view-sub">Domaines de base pour vos applications. Les domaines « locaux » sont ajoutés à /etc/hosts.</p>
+    <div class="panel"><div class="ph"><h3>Ajouter un domaine</h3></div>
+      <div class="form-row">
+        <div class="full"><label>Nom du domaine</label><input type="text" id="d-name" placeholder="test  ou  mawena.cloud"></div>
+        <label class="checkbox full"><input type="checkbox" id="d-local"> Domaine local (résolu via /etc/hosts, façon Laragon)</label>
+      </div>
+      <div class="form-foot"><button class="btn btn-primary btn-sm" id="d-add">Ajouter</button></div>
+    </div>
+    <div class="panel"><div class="ph"><h3>Domaines enregistrés</h3></div><div class="pb" id="dom-list">Chargement…</div></div>`;
+  document.getElementById('d-add').onclick=async()=>{
+    const name=document.getElementById('d-name').value.trim();
+    const type=document.getElementById('d-local').checked?'local':'remote';
+    if(!name){ toast('Nom requis.',false); return; }
+    const r=await api('POST','/domains',{name,type});
+    if(result(r,`Domaine « ${name} » ajouté.`)){ document.getElementById('d-name').value=''; loadDomains(); }
+  };
+  loadDomains();
+}
+async function loadDomains(){
+  const r=await api('GET','/domains'); const doms=(r.data&&r.data.domains)||[]; const def=(r.data&&r.data.default)||'';
+  const el=document.getElementById('dom-list');
+  if(!doms.length){ el.innerHTML=`<div class="empty">Aucun domaine.</div>`; return; }
+  el.innerHTML=`<table><thead><tr><th>Domaine</th><th>Type</th><th></th></tr></thead><tbody>${
+    doms.map(d=>`<tr><td class="id">${esc(d.name)}${d.name===def?' <span class="tag" style="color:var(--amber);border-color:rgba(245,181,68,.4)">défaut</span>':''}</td>
+      <td><span class="tag ${d.type==='local'?'local':'remote'}">${d.type==='local'?'local':'distant'}</span></td>
+      <td><div class="actions"><button class="btn btn-danger btn-sm" data-dom="${esc(d.name)}">Retirer</button></div></td></tr>`).join('')
+  }</tbody></table>`;
+  el.querySelectorAll('button[data-dom]').forEach(b=>b.onclick=async()=>{
+    if(!await confirmModal('Retirer le domaine',`« ${b.dataset.dom} » sera retiré du registre.`))return;
+    const r=await api('DELETE','/domains/'+encodeURIComponent(b.dataset.dom)); result(r); loadDomains();
+  });
+}
+
+async function viewDatabases(){
+  content().innerHTML=`<span class="eyebrow">MariaDB</span><h2 class="view-title">Bases de données</h2>
+    <p class="view-sub">Créez une base et son utilisateur dédié en une action.</p>
+    <div class="panel"><div class="ph"><h3>Créer une base</h3></div>
+      <div class="form-row"><div class="full"><label>Nom de la base</label><input type="text" id="db-name" placeholder="monapp"></div></div>
+      <div class="form-foot"><button class="btn btn-primary btn-sm" id="db-add">Créer</button></div></div>
+    <div class="panel"><div class="ph"><h3>Bases existantes</h3></div><div class="pb" id="db-list">Chargement…</div></div>`;
+  document.getElementById('db-add').onclick=async()=>{
+    const name=document.getElementById('db-name').value.trim();
+    if(!name){ toast('Nom requis.',false); return; }
+    const r=await api('POST','/databases',{name});
+    const d=r.data||{};
+    if(d.ok){ toast(`Base « ${name} » créée.`); document.getElementById('db-name').value='';
+      infoModal('Identifiants de la base',`<p style="color:var(--muted);font-size:14px;margin:0 0 6px">Notez-les : le mot de passe ne sera plus affiché.</p>
+        <div class="cred">Base&nbsp;: <b>${esc(d.database)}</b></div>
+        <div class="cred">Utilisateur&nbsp;: <b>${esc(d.user)}</b></div>
+        <div class="cred">Mot de passe&nbsp;: <b>${esc(d.password)}</b></div>`);
+      loadDatabases();
+    } else toast(d.message||'Erreur.',false);
+  };
+  loadDatabases();
+}
+async function loadDatabases(){
+  const r=await api('GET','/databases'); const dbs=(r.data&&r.data.databases)||[];
+  const el=document.getElementById('db-list');
+  if(!dbs.length){ el.innerHTML=`<div class="empty">Aucune base utilisateur.</div>`; return; }
+  el.innerHTML=`<table><thead><tr><th>Base</th><th></th></tr></thead><tbody>${
+    dbs.map(n=>`<tr><td class="id">${esc(n)}</td><td><div class="actions"><button class="btn btn-danger btn-sm" data-db="${esc(n)}">Supprimer</button></div></td></tr>`).join('')
+  }</tbody></table>`;
+  el.querySelectorAll('button[data-db]').forEach(b=>b.onclick=async()=>{
+    if(!await confirmModal('Supprimer la base',`« ${b.dataset.db} » et son utilisateur seront supprimés définitivement.`))return;
+    const r=await api('DELETE','/databases/'+encodeURIComponent(b.dataset.db)); result(r); loadDatabases();
+  });
+}
+
+async function viewSystem(){
+  content().innerHTML=`<span class="eyebrow">Maintenance</span><h2 class="view-title">Système</h2>
+    <p class="view-sub">Opérations globales sur la pile.</p>
+    <div class="panel"><div class="ph"><h3>Registre</h3></div>
+      <div class="form-row"><p style="color:var(--muted);font-size:14px;margin:0" class="full">Reconstruit le registre des applications à partir des configurations Nginx réelles.</p></div>
+      <div class="form-foot"><button class="btn btn-ghost btn-sm" id="s-reload">Reconstruire le registre</button></div></div>
+    <div class="panel" style="border-color:rgba(255,95,87,.25)"><div class="ph"><h3 style="color:#ff8f88">Zone dangereuse</h3></div>
+      <div class="form-row"><p style="color:var(--muted);font-size:14px;margin:0" class="full">Désinstalle complètement la pile LNMP (Nginx, MariaDB, PHP, Certbot), le panneau et la configuration. <b style="color:#ff8f88">Irréversible.</b></p></div>
+      <div class="form-foot"><button class="btn btn-danger btn-sm" id="s-uninstall">Désinstaller LNMP</button></div></div>`;
+  document.getElementById('s-reload').onclick=async()=>{ const r=await api('POST','/system/reload'); result(r,'Registre reconstruit.'); };
+  document.getElementById('s-uninstall').onclick=async()=>{
+    if(!await confirmModal('Désinstaller LNMP','Toute la pile et la configuration seront supprimées. Cette action est irréversible.'))return;
+    if(!await confirmModal('Dernière confirmation','Confirmez-vous DÉFINITIVEMENT la désinstallation complète ?'))return;
+    const r=await api('POST','/system/uninstall'); result(r,'Désinstallation lancée.');
+  };
+}
+
+/* --------------------------- Démarrage -------------------------------- */
+(async function init(){
+  const r=await api('GET','/me');
+  if(r.data && r.data.ok) showApp(); else showLogin();
+})();
+</script>
+</body>
+</html>

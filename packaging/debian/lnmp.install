@@ -1,3 +1,4 @@
 bin/lnmp usr/bin/
 sbin/lnmpd usr/sbin/
 systemd/lnmp-admin.service lib/systemd/system/
+webui usr/share/lnmp/
