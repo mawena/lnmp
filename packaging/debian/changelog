@@ -1,4 +1,15 @@
-lnmp (1.9-1) UNRELEASED; urgency=medium
+lnmp (1.11-1) UNRELEASED; urgency=medium
+
+  * Le paquet n'impose plus Nginx/MariaDB/PHP/Certbot comme dépendances
+    (déplacés en Suggests) : « apt install lnmp » n'installe plus que l'outil,
+    et un composant système cassé ne bloque plus l'installation. La pile est
+    installée par « lnmp install ».
+  * install : auto-réparation de nginx.conf manquant (état dpkg incohérent
+    hérité d'anciennes désinstallations) via --reinstall --force-confmiss.
+
+ -- Charles Gamligo <gamligocharles@gmail.com>  Sun, 19 Jul 2026 06:00:00 +0000
+
+lnmp (1.10-1) UNRELEASED; urgency=medium
 
   * Désinstallation sélective : par défaut, seul le service web
     d'administration LNMP est retiré ; Nginx, MariaDB, PHP et les applications
@@ -9,8 +20,9 @@ lnmp (1.9-1) UNRELEASED; urgency=medium
     enrichi (applications, domaines, actions rapides).
   * La désinstallation n'est plus déclenchable depuis le panneau web (elle
     couperait le démon) : elle se fait via « sudo lnmp uninstall ».
+  * fix(uninstall): désinstallation sélective (service web par défaut)
 
- -- Charles Gamligo <gamligocharles@gmail.com>  Sun, 19 Jul 2026 02:42:01 +0000
+ -- Charles Gamligo <gamligocharles@gmail.com>  Sun, 19 Jul 2026 03:14:56 +0000
 
 lnmp (1.8-1) unstable; urgency=medium
 

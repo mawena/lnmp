@@ -665,7 +665,14 @@ install_lnmp() {
     fi
     if [ "$current_step" -le 2 ]; then
         echo -e "${YELLOW}[2/7] Nginx...${NC}"
-        apt-get install -y nginx
+        apt-get install -y nginx nginx-common
+        # Auto-réparation : si nginx.conf est absent (état dpkg incohérent hérité
+        # d'une ancienne désinstallation), forcer la restauration des fichiers de
+        # configuration manquants du paquet nginx-common.
+        if [ ! -f /etc/nginx/nginx.conf ]; then
+            echo -e "${YELLOW}   -> nginx.conf manquant, restauration des fichiers de conf...${NC}"
+            apt-get install -y --reinstall -o 'Dpkg::Options::=--force-confmiss' nginx-common
+        fi
         systemctl enable --now nginx
         set_state 2
     fi

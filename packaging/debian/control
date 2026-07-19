@@ -7,7 +7,15 @@ Standards-Version: 4.6.2
 
 Package: lnmp
 Architecture: all
-Depends: ${misc:Depends}, bash, python3, acl, curl, wget, nginx, mariadb-server, certbot, python3-certbot-nginx
+Depends: ${misc:Depends}, bash, python3
+Recommends: acl, curl, wget
+Suggests: nginx, mariadb-server, php-fpm, certbot, python3-certbot-nginx
 Description: Gestionnaire CLI complet pour la pile LNMP et SSL.
- Outil d'administration pour le déploiement et la gestion rapide 
- d'applications web sur Ubuntu.
+ Outil d'administration pour le déploiement et la gestion rapide
+ d'applications web sur Ubuntu (Nginx, MariaDB, PHP, Certbot) avec un
+ panneau web d'administration.
+ .
+ La pile elle-même (Nginx, MariaDB, PHP, Certbot) est installée par la
+ commande « lnmp install », de façon idempotente : le paquet ne l'impose
+ donc pas comme dépendance, ce qui évite qu'un composant cassé bloque
+ l'installation de l'outil.
