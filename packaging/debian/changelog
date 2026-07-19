@@ -1,3 +1,10 @@
+lnmp (1.8-1) UNRELEASED; urgency=medium
+
+  * Ajout de l'admin web
+  * Ajout de l'admin web
+
+ -- Charles Gamligo <gamligocharles@gmail.com>  Sun, 19 Jul 2026 00:12:01 +0000
+
 lnmp (1.8-1) unstable; urgency=medium
 
   * Interface web d'administration (http://admin.lnmp) : panneau pour gérer
