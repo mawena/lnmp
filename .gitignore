@@ -27,6 +27,7 @@ packaging/debian/changelog.dch
 .DS_Store
 .idea/
 .vscode/
+repo
 
 # Site web construit (si généré ailleurs)
 web/dist/

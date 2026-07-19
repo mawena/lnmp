@@ -29,7 +29,7 @@ fi
 
 # 3. Configuration de la source APT (Utilisation du dépôt plat './')
 echo -e "${YELLOW}-> Ajout du dépôt mawena.cloud aux sources APT...${NC}"
-echo "deb [trusted=yes lang=none] https://mawena.cloud/repo ./" | tee /etc/apt/sources.list.d/mawena.list
+echo "deb [trusted=yes lang=none] https://lnmp.mawena.cloud/repo ./" | tee /etc/apt/sources.list.d/mawena.list
 
 # 4. Nettoyage et rafraîchissement des index APT
 echo -e "${YELLOW}-> Nettoyage et mise à jour des catalogues de paquets...${NC}"

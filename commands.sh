@@ -12,7 +12,7 @@ mkdir -p lnmp_1.7-1;
 mv lnmp_1.7-1* lnmp_1.7-1/
 mv lnmp_1.7-1 archive/; # Déplacer les fichiers générés dans le dossier de version
 
-scp -P 2244 archive/lnmp_1.7-1/lnmp_1.7-1_all.deb mawena.cloud:/var/www/html/mawena.cloud/repo/ubuntu	# Envoyer le .deb sur le serveur
-#echo "deb [trusted=yes lang=none] https://mawena.cloud/repo /" | sudo tee /etc/apt/sources.list.d/mawena.list # Ajoute le dépôt APT
+scp -P 2244 archive/lnmp_1.7-1/lnmp_1.7-1_all.deb mawena.cloud:/var/www/html/lnmp/repo/ubuntu	# Envoyer le .deb sur le serveur
+#echo "deb [trusted=yes lang=none] https://lnmp.mawena.cloud/repo /" | sudo tee /etc/apt/sources.list.d/mawena.list # Ajoute le dépôt APT
 #sudo apt update # Met à jour la liste des paquets
 #sudo apt install lnmp # Installe le paquet lnmp

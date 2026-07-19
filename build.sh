@@ -60,7 +60,7 @@ mv "$TARGET_DIR" archive/
 # 7. Transfert automatique vers le serveur de production (mawena.cloud)
 DEB_FILE="archive/lnmp_${VERSION}/lnmp_${VERSION}_all.deb"
 echo -e "\033[0;34m-> Transfert du fichier .deb vers le serveur de prod (Port 2244)...\033[0m"
-scp -P 2244 "$DEB_FILE" mawena.cloud:/var/www/html/repo/ubuntu/
+scp -P 2244 "$DEB_FILE" mawena.cloud:/var/www/html/lnmp/repo/ubuntu/
 
 echo -e "\033[0;32m=== Build v$VERSION terminé, archivé localement et envoyé sur le serveur ! ===\033[0m"
 echo -e "Étape suivante : Connectez-vous sur le serveur et lancez : \033[0;33msudo ./update_repo.sh\033[0m"
