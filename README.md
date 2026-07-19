@@ -30,7 +30,7 @@ bases de données en quelques secondes.
 
 ```bash
 # Dépôt APT + installation complète (la pile est installée ET configurée)
-echo "deb [trusted=yes] https://lnmp.mawena.cloud/repo /" | sudo tee /etc/apt/sources.list.d/mawena.list
+echo "deb [trusted=yes] https://mawena.cloud/repo /" | sudo tee /etc/apt/sources.list.d/mawena.list
 sudo apt update && sudo apt install lnmp
 
 # Définir le mot de passe du panneau web (non fixé par défaut)

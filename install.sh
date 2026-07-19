@@ -17,7 +17,7 @@ echo -e "${BLUE}=====================================================${NC}"
 # 1. Vérification des privilèges Root
 if [ "$EUID" -ne 0 ]; then
     echo -e "${RED}Erreur : Ce script doit être exécuté en tant que root.${NC}"
-    echo "Veuillez relancer avec : wget -qO- https://lnmp.mawena.cloud/install.sh | sudo sh"
+    echo "Veuillez relancer avec : wget -qO- https://mawena.cloud/install.sh | sudo sh"
     exit 1
 fi
 
@@ -29,7 +29,7 @@ fi
 
 # 3. Configuration de la source APT (Utilisation du dépôt plat './')
 echo -e "${YELLOW}-> Ajout du dépôt mawena.cloud aux sources APT...${NC}"
-echo "deb [trusted=yes lang=none] https://lnmp.mawena.cloud/repo ./" | tee /etc/apt/sources.list.d/mawena.list
+echo "deb [trusted=yes lang=none] https://mawena.cloud/repo ./" | tee /etc/apt/sources.list.d/mawena.list
 
 # 4. Nettoyage et rafraîchissement des index APT
 echo -e "${YELLOW}-> Nettoyage et mise à jour des catalogues de paquets...${NC}"
