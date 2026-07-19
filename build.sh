@@ -30,9 +30,15 @@ cd packaging
 # 2. Nettoyer le fichier temporaire
 rm -f debian/changelog.dch
 
-# 3. Mise à jour du changelog
-echo -e "\033[0;32m-> Mise à jour du changelog...\033[0m"
-dch -v "$VERSION" "$COMMENTAIRE"
+# 3. Mise à jour du changelog (ignorée si déjà à la version demandée,
+#    pour éviter une entrée en double quand le changelog a été édité à la main)
+CURRENT_CL_VERSION=$(dpkg-parsechangelog -SVersion 2>/dev/null)
+if [ "$CURRENT_CL_VERSION" = "$VERSION" ]; then
+    echo -e "\033[1;33m-> Changelog déjà en $VERSION : étape 'dch' ignorée.\033[0m"
+else
+    echo -e "\033[0;32m-> Mise à jour du changelog ($CURRENT_CL_VERSION -> $VERSION)...\033[0m"
+    dch -v "$VERSION" "$COMMENTAIRE"
+fi
 
 # 4. Compilation du paquet Debian
 echo -e "\033[0;32m-> Compilation du paquet avec debuild...\033[0m"
