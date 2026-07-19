@@ -1,4 +1,4 @@
-lnmp (1.12-1) UNRELEASED; urgency=medium
+lnmp (1.20-1) UNRELEASED; urgency=medium
 
   * Le paquet n'impose plus Nginx/MariaDB/PHP/Certbot comme dépendances
     (déplacés en Suggests) : « apt install lnmp » n'installe plus que l'outil,
@@ -22,8 +22,12 @@ lnmp (1.12-1) UNRELEASED; urgency=medium
   * PHP : la version est détectée automatiquement (socket FPM) au lieu d'être
     figée.
   * apt install complet + apt remove/uninstall propres
+  * Option SSL à la création d'application dans le panneau web
+  * refactor(install): supprimer l'application témoin par défaut
+  * feat(webui): favicon reprenant le logo « stack-mark » du panneau
+    admin
 
- -- Charles Gamligo <gamligocharles@gmail.com>  Sun, 19 Jul 2026 03:56:57 +0000
+ -- Charles Gamligo <gamligocharles@gmail.com>  Sun, 19 Jul 2026 05:14:11 +0000
 
 lnmp (1.10-1) UNRELEASED; urgency=medium
 
