@@ -23,8 +23,11 @@ Installe ou reprend l'installation de la pile (Nginx, MariaDB, PHP, Certbot,
 droits `webdev`). Idempotente.
 
 ### `uninstall`
-Désinstalle et purge la pile et ses composants. **Destructif** — demande une
-confirmation.
+Désinstallation **sélective**. Par défaut, seul le service web d'administration
+LNMP est retiré ; **Nginx, MariaDB, PHP et vos applications sont conservés**
+(ce qui évite de casser `/etc/nginx`). En interactif, chaque composant est
+proposé. Options non interactives : `--nginx`, `--mariadb`, `--php`, `--apps`,
+`--yes`.
 
 ### `doctor`
 Diagnostic complet : état des services (`nginx`, `mariadb`, `php-fpm`,

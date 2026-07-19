@@ -265,8 +265,9 @@ class Handler(BaseHTTPRequestHandler):
         # /api/system ...
         if seg == ["system", "reload"] and method == "POST":
             return run_lnmp(["reload-app"])
-        if seg == ["system", "uninstall"] and method == "POST":
-            return run_lnmp(["uninstall", "--yes"])
+        # La désinstallation n'est PAS exposée par l'API : elle coupe le service
+        # lnmp-admin (donc ce démon) et doit se faire depuis le CLI serveur
+        # (« sudo lnmp uninstall »), où elle est de plus interactive/sélective.
 
         return {"ok": False, "message": "Route inconnue."}, 404
 

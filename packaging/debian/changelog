@@ -1,9 +1,16 @@
-lnmp (1.8-1) UNRELEASED; urgency=medium
+lnmp (1.9-1) UNRELEASED; urgency=medium
 
-  * Ajout de l'admin web
-  * Ajout de l'admin web
+  * Désinstallation sélective : par défaut, seul le service web
+    d'administration LNMP est retiré ; Nginx, MariaDB, PHP et les applications
+    sont conservés (corrige l'erreur « nginx.conf: No such file » à la
+    réinstallation). Options --nginx / --mariadb / --php / --apps ; purge de
+    nginx-common pour une réinstallation propre.
+  * Panneau web : le contenu remplit désormais toute la page ; tableau de bord
+    enrichi (applications, domaines, actions rapides).
+  * La désinstallation n'est plus déclenchable depuis le panneau web (elle
+    couperait le démon) : elle se fait via « sudo lnmp uninstall ».
 
- -- Charles Gamligo <gamligocharles@gmail.com>  Sun, 19 Jul 2026 00:12:01 +0000
+ -- Charles Gamligo <gamligocharles@gmail.com>  Sun, 19 Jul 2026 02:42:01 +0000
 
 lnmp (1.8-1) unstable; urgency=medium
 

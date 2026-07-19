@@ -50,6 +50,10 @@ while [ $# -gt 0 ]; do
         -y|--yes)          OPT[yes]=1; shift ;;
         --apex)            OPT[apex]=1; shift ;;
         --local)           OPT[local]=1; shift ;;
+        --nginx)           OPT[nginx]=1; shift ;;
+        --mariadb)         OPT[mariadb]=1; shift ;;
+        --php)             OPT[php]=1; shift ;;
+        --apps)            OPT[apps]=1; shift ;;
         -h|--help)         POSITIONAL+=("help"); shift ;;
         -v|--version)      POSITIONAL+=("version"); shift ;;
         --id|--domain|--path|--sub|--email|--password|--name|--type)
@@ -724,23 +728,74 @@ install_lnmp() {
 }
 
 uninstall_lnmp() {
-    if [ "$JSON_MODE" -eq 0 ] && [ -z "${OPT[yes]}" ]; then
-        read -p "Voulez-vous vraiment TOUT supprimer (pile + configuration) ? (y/n) : " confirm
-        [[ "$confirm" =~ ^[Yy]$ ]] || return 1
+    # Désinstallation SÉLECTIVE.
+    # Par défaut, seul le service web d'administration LNMP est retiré ; la pile
+    # (Nginx, MariaDB, PHP) et les applications sont conservées — ce qui évite de
+    # casser /etc/nginx et de provoquer l'erreur « nginx.conf: No such file » à
+    # la réinstallation.
+    local rm_nginx=0 rm_mariadb=0 rm_php=0 rm_apps=0
+
+    if [ "$JSON_MODE" -eq 1 ]; then
+        [ -n "${OPT[nginx]}" ]   && rm_nginx=1
+        [ -n "${OPT[mariadb]}" ] && rm_mariadb=1
+        [ -n "${OPT[php]}" ]     && rm_php=1
+        [ -n "${OPT[apps]}" ]    && rm_apps=1
+    elif [ -z "${OPT[yes]}" ]; then
+        echo -e "${BLUE}=== Désinstallation LNMP ===${NC}"
+        echo -e "Le ${YELLOW}service web d'administration${NC} de LNMP va être retiré."
+        echo -e "Indiquez ce qu'il faut supprimer ${YELLOW}en plus${NC} (défaut : non) :"
+        local a
+        read -p "  Retirer Nginx ?                                  (y/N) : " a; [[ "$a" =~ ^[Yy]$ ]] && rm_nginx=1
+        read -p "  Retirer MariaDB ?                                (y/N) : " a; [[ "$a" =~ ^[Yy]$ ]] && rm_mariadb=1
+        read -p "  Retirer PHP-FPM ?                                (y/N) : " a; [[ "$a" =~ ^[Yy]$ ]] && rm_php=1
+        read -p "  Supprimer les applications et la config LNMP ?   (y/N) : " a; [[ "$a" =~ ^[Yy]$ ]] && rm_apps=1
     fi
-    # Interface web d'administration
+
+    # 1. Toujours : retrait du service web d'administration LNMP
+    echo -e "${YELLOW}-> Retrait du service web d'administration LNMP...${NC}"
     systemctl disable --now lnmp-admin 2>/dev/null || true
     rm -f /etc/nginx/sites-enabled/admin.lnmp /etc/nginx/sites-available/admin.lnmp
     rm -rf "$WEBUI_DEST"
-    # Nettoyage des entrées /etc/hosts gérées par lnmp
-    sed -i '/#[[:space:]]*lnmp[[:space:]]*$/d' "$HOSTS_FILE" 2>/dev/null || true
+    hosts_remove "$ADMIN_HOST"
+    rm -f "$ADMIN_CONF"
 
-    systemctl stop nginx mariadb "php${PHP_VERSION}-fpm" 2>/dev/null || true
-    apt-get purge -y nginx mariadb-server mariadb-client "php${PHP_VERSION}*" certbot python3-certbot-nginx acl
-    apt-get autoremove -y
-    rm -f "$STATE_FILE" "$APPS_REGISTRY"
-    rm -rf /etc/nginx "$CONFIG_DIR"
-    emit_result ok "Désinstallation complète réussie."
+    # 2. Applications + configuration LNMP (optionnel)
+    if [ "$rm_apps" -eq 1 ]; then
+        echo -e "${YELLOW}-> Suppression des applications et de la configuration LNMP...${NC}"
+        if [ -f "$APPS_REGISTRY" ]; then
+            while IFS=: read -r id fqdn path base; do
+                [ -z "$id" ] && continue
+                rm -f /etc/nginx/sites-enabled/"$id" /etc/nginx/sites-available/"$id"
+                [ -n "$fqdn" ] && [ -n "$base" ] && domain_is_local "$base" && hosts_remove "$fqdn"
+            done < "$APPS_REGISTRY"
+        fi
+        rm -f "$APPS_REGISTRY" "$STATE_FILE"
+        rm -rf "$CONFIG_DIR"
+        sed -i '/#[[:space:]]*lnmp[[:space:]]*$/d' "$HOSTS_FILE" 2>/dev/null || true
+    fi
+
+    # 3. Composants de la pile (optionnels — conservés par défaut)
+    local pkgs=()
+    [ "$rm_nginx" -eq 1 ]   && pkgs+=(nginx nginx-common nginx-core)
+    [ "$rm_mariadb" -eq 1 ] && pkgs+=(mariadb-server mariadb-client)
+    [ "$rm_php" -eq 1 ]     && pkgs+=("php${PHP_VERSION}*")
+    if [ "${#pkgs[@]}" -gt 0 ]; then
+        echo -e "${YELLOW}-> Suppression des paquets : ${pkgs[*]}${NC}"
+        [ "$rm_nginx" -eq 1 ]   && systemctl stop nginx 2>/dev/null || true
+        [ "$rm_mariadb" -eq 1 ] && systemctl stop mariadb 2>/dev/null || true
+        [ "$rm_php" -eq 1 ]     && systemctl stop "php${PHP_VERSION}-fpm" 2>/dev/null || true
+        apt-get purge -y "${pkgs[@]}"
+        apt-get autoremove -y
+        # Purger nginx-common assure qu'une future réinstallation recrée nginx.conf.
+        [ "$rm_nginx" -eq 1 ] && rm -rf /etc/nginx
+    fi
+
+    # Recharger Nginx s'il est conservé (pour prendre en compte le retrait du vhost admin).
+    if [ "$rm_nginx" -eq 0 ] && command -v nginx >/dev/null 2>&1 && [ -f /etc/nginx/nginx.conf ]; then
+        reload_nginx
+    fi
+
+    emit_result ok "Désinstallation terminée."
     [ "$JSON_MODE" -eq 0 ] && exit 0
 }
 
@@ -760,7 +815,8 @@ Options générales :
 
 Global :
   install               Installer / reprendre l'installation de la pile
-  uninstall             Désinstaller la pile et la configuration
+  uninstall             Désinstaller (sélectif : par défaut, seul le service
+                        web LNMP ; --nginx/--mariadb/--php/--apps pour plus)
   doctor                Diagnostiquer l'état de la pile
   status                État synthétique (utile avec --json)
 
@@ -843,7 +899,7 @@ while true; do
     echo " 4 - Supprimer une application web"
     echo " 5 - Ajouter un certificat SSL à une application"
     echo " 6 - Retirer un certificat SSL à une application"
-    echo " 7 - Désinstaller complètement LNMP"
+    echo " 7 - Désinstaller LNMP (sélectif — service web par défaut)"
     echo " 8 - Activer une application (Link vhost)"
     echo " 9 - Désactiver une application (Unlink vhost)"
     echo "10 - Créer une base de données"

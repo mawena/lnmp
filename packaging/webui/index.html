@@ -435,15 +435,12 @@ async function viewSystem(){
     <div class="panel"><div class="ph"><h3>Registre</h3></div>
       <div class="form-row"><p style="color:var(--muted);font-size:14px;margin:0" class="full">Reconstruit le registre des applications à partir des configurations Nginx réelles.</p></div>
       <div class="form-foot"><button class="btn btn-ghost btn-sm" id="s-reload">Reconstruire le registre</button></div></div>
-    <div class="panel" style="border-color:rgba(255,95,87,.25)"><div class="ph"><h3 style="color:#ff8f88">Zone dangereuse</h3></div>
-      <div class="form-row"><p style="color:var(--muted);font-size:14px;margin:0" class="full">Désinstalle complètement la pile LNMP (Nginx, MariaDB, PHP, Certbot), le panneau et la configuration. <b style="color:#ff8f88">Irréversible.</b></p></div>
-      <div class="form-foot"><button class="btn btn-danger btn-sm" id="s-uninstall">Désinstaller LNMP</button></div></div>`;
+    <div class="panel" style="border-color:rgba(255,95,87,.25)"><div class="ph"><h3 style="color:#ff8f88">Désinstallation</h3></div>
+      <div class="form-row"><p style="color:var(--muted);font-size:14px;margin:0" class="full">La désinstallation se lance <b>depuis le serveur</b> (elle vous laisse choisir les composants à retirer et couperait ce panneau si elle était déclenchée depuis le web). Exécutez&nbsp;:</p></div>
+      <div class="form-row" style="padding-top:0"><div class="full"><div class="cred" style="color:var(--emerald)">sudo lnmp uninstall</div></div></div>
+      <div class="form-row" style="padding-top:0"><p style="color:var(--muted-2);font-size:13px;margin:0" class="full">Par défaut, seul le service web d'administration LNMP est retiré ; Nginx, MariaDB et PHP sont conservés sauf choix contraire.</p></div>
+    </div>`;
   document.getElementById('s-reload').onclick=async()=>{ const r=await api('POST','/system/reload'); result(r,'Registre reconstruit.'); };
-  document.getElementById('s-uninstall').onclick=async()=>{
-    if(!await confirmModal('Désinstaller LNMP','Toute la pile et la configuration seront supprimées. Cette action est irréversible.'))return;
-    if(!await confirmModal('Dernière confirmation','Confirmez-vous DÉFINITIVEMENT la désinstallation complète ?'))return;
-    const r=await api('POST','/system/uninstall'); result(r,'Désinstallation lancée.');
-  };
 }
 
 /* --------------------------- Démarrage -------------------------------- */

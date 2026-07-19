@@ -33,7 +33,11 @@ Lancer ou reprendre l'installation de la pile LNMP. L'installation est
 idempotente : elle reprend à la dernière étape réussie.
 .TP
 .B uninstall
-Désinstaller complètement la pile et ses composants.
+Désinstaller de façon sélective. Par défaut, seul le service web
+d'administration LNMP est retiré ; Nginx, MariaDB, PHP et les applications sont
+conservés. En mode interactif, chaque composant est proposé à la suppression.
+Options : \fB\-\-nginx\fR, \fB\-\-mariadb\fR, \fB\-\-php\fR, \fB\-\-apps\fR
+(supprimer aussi ces éléments).
 .TP
 .B doctor
 Diagnostiquer l'état de la pile (services, configuration Nginx, certificats).
