@@ -860,12 +860,7 @@ configure_stack() {
         setfacl -R -d -m u:www-data:rwx /var/www/html 2>/dev/null || true
     fi
 
-    # Application témoin (visible immédiatement sur http://<domaine par défaut>)
-    local ex="/var/www/html/example/public"
-    mkdir -p "$ex"
-    [ -f "$ex/index.php" ] || echo "<?php echo 'Bienvenue sur LNMP !'; ?>" > "$ex/index.php"
-    write_vhost "example" "$DEFAULT_DOMAIN" "$ex"
-    ln -sf /etc/nginx/sites-available/example /etc/nginx/sites-enabled/ 2>/dev/null || true
+    # Désactive le vhost par défaut livré par Nginx (aucune app témoin créée)
     [ -f /etc/nginx/sites-enabled/default ] && rm -f /etc/nginx/sites-enabled/default
 
     # Services de la pile
@@ -949,13 +944,8 @@ install_lnmp() {
         set_state 6
     fi
     if [ "$current_step" -le 7 ]; then
-        echo -e "${YELLOW}[7/8] Application témoin...${NC}"
-        local initial_app_path="/var/www/html/example/public"
-        mkdir -p "$initial_app_path"
-        [ -f "$initial_app_path/index.php" ] || echo "<?php echo 'Bienvenue sur LNMP !'; ?>" > "$initial_app_path/index.php"
-        write_vhost "example" ".${DEFAULT_DOMAIN}" "$initial_app_path"
-        ln -sf /etc/nginx/sites-available/example /etc/nginx/sites-enabled/
-        [ -f /etc/nginx/sites-enabled/default ] && rm /etc/nginx/sites-enabled/default
+        echo -e "${YELLOW}[7/8] Nettoyage du vhost par défaut...${NC}"
+        [ -f /etc/nginx/sites-enabled/default ] && rm -f /etc/nginx/sites-enabled/default
         reload_nginx
         set_state 7
     fi
