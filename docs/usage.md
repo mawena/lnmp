@@ -94,6 +94,26 @@ Le panneau exige une authentification. Pour (ré)initialiser le mot de passe :
 sudo lnmp set-password
 ```
 
+### Choisir le lien et l'interface d'écoute
+
+Pendant `lnmp install`, deux questions configurent l'accès :
+
+- le **nom d'hôte** du lien (par défaut `admin.lnmp`) ;
+- l'**interface d'écoute** du panneau :
+  - `127.0.0.1` — localhost uniquement (recommandé, accès par tunnel SSH) ;
+  - `0.0.0.0` — toutes les interfaces (joignable depuis le réseau — à protéger) ;
+  - une **IP précise** du serveur.
+
+Pour les changer ensuite :
+
+```bash
+sudo lnmp admin-url                                   # interactif
+sudo lnmp admin-url --admin-host admin.mondomaine --listen 0.0.0.0   # direct
+```
+
+> Quelle que soit l'interface choisie pour le panneau, le démon `lnmpd` reste
+> toujours lié à `127.0.0.1` ; nginx relaie `/api/` vers lui.
+
 ## Resynchroniser le registre
 
 Si vous avez édité des vhosts Nginx à la main, réalignez le registre LNMP :

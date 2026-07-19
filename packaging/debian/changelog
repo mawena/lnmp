@@ -6,8 +6,12 @@ lnmp (1.11-1) UNRELEASED; urgency=medium
     installée par « lnmp install ».
   * install : auto-réparation de nginx.conf manquant (état dpkg incohérent
     hérité d'anciennes désinstallations) via --reinstall --force-confmiss.
+  * install : demande désormais le lien (nom d'hôte) du panneau web et
+    l'interface d'écoute (127.0.0.1 / 0.0.0.0 / IP précise). Nouvelle commande
+    « admin-url » pour les changer après coup (--admin-host, --listen). Le
+    démon lnmpd reste toujours sur 127.0.0.1.
 
- -- Charles Gamligo <gamligocharles@gmail.com>  Sun, 19 Jul 2026 06:00:00 +0000
+ -- Charles Gamligo <gamligocharles@gmail.com>  Sun, 19 Jul 2026 03:27:47 +0000
 
 lnmp (1.10-1) UNRELEASED; urgency=medium
 

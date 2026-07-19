@@ -18,7 +18,9 @@ fi
 # ---- Valeurs par défaut (surchargées par /etc/lnmp/lnmp.conf) ----------------
 PHP_VERSION="8.3"
 DEFAULT_DOMAIN=""
-ADMIN_PORT="8787"
+ADMIN_PORT="8787"          # port du démon lnmpd (toujours sur 127.0.0.1)
+ADMIN_HOST="admin.lnmp"    # nom d'hôte utilisé dans le lien du panneau
+ADMIN_LISTEN="127.0.0.1"   # interface d'écoute du vhost admin (127.0.0.1 / 0.0.0.0 / IP)
 
 # ---- Chemins -----------------------------------------------------------------
 CONFIG_DIR="/etc/lnmp"
@@ -30,7 +32,6 @@ APPS_REGISTRY="/etc/nginx/lnmp_apps.list"
 HOSTS_FILE="/etc/hosts"
 WEBUI_SRC="/usr/share/lnmp/webui"
 WEBUI_DEST="/var/www/html/lnmp"
-ADMIN_HOST="admin.lnmp"
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -56,7 +57,7 @@ while [ $# -gt 0 ]; do
         --apps)            OPT[apps]=1; shift ;;
         -h|--help)         POSITIONAL+=("help"); shift ;;
         -v|--version)      POSITIONAL+=("version"); shift ;;
-        --id|--domain|--path|--sub|--email|--password|--name|--type)
+        --id|--domain|--path|--sub|--email|--password|--name|--type|--admin-host|--listen)
                            key="${1#--}"; OPT[$key]="$2"; shift 2 ;;
         --)                shift; while [ $# -gt 0 ]; do POSITIONAL+=("$1"); shift; done ;;
         *)                 POSITIONAL+=("$1"); shift ;;
@@ -153,9 +154,9 @@ EOF
 # GESTION /etc/hosts (domaines locaux façon Laragon)
 # ==============================================================================
 hosts_add() {
-    local fqdn=$1
+    local fqdn=$1 ip=${2:-127.0.0.1}
     grep -qE "[[:space:]]${fqdn//./\\.}([[:space:]]|\$)" "$HOSTS_FILE" 2>/dev/null && return 0
-    printf '127.0.0.1\t%s\t# lnmp\n' "$fqdn" >> "$HOSTS_FILE"
+    printf '%s\t%s\t# lnmp\n' "$ip" "$fqdn" >> "$HOSTS_FILE"
 }
 hosts_remove() {
     local fqdn=$1 esc
@@ -173,6 +174,8 @@ write_config() {
 DEFAULT_DOMAIN="$DEFAULT_DOMAIN"
 PHP_VERSION="$PHP_VERSION"
 ADMIN_PORT="$ADMIN_PORT"
+ADMIN_HOST="$ADMIN_HOST"
+ADMIN_LISTEN="$ADMIN_LISTEN"
 EOF
     chmod 644 "$LNMP_CONF"
 }
@@ -578,11 +581,59 @@ db_drop() {
 # ==============================================================================
 # INTERFACE WEB D'ADMINISTRATION
 # ==============================================================================
+# Renvoie l'IP à écrire dans /etc/hosts pour le nom d'hôte du panneau.
+admin_hosts_ip() {
+    case "$ADMIN_LISTEN" in
+        127.0.0.1|0.0.0.0|"") echo "127.0.0.1" ;;
+        *)                    echo "$ADMIN_LISTEN" ;;
+    esac
+}
+
+# Demande le lien (nom d'hôte) et l'interface d'écoute du panneau web.
+configure_admin_access() {
+    # Non interactif si --json ou si au moins une option est fournie.
+    if [ "$JSON_MODE" -eq 1 ] || [ -n "${OPT[admin-host]}" ] || [ -n "${OPT[listen]}" ]; then
+        [ -n "${OPT[admin-host]}" ] && ADMIN_HOST="${OPT[admin-host]}"
+        [ -n "${OPT[listen]}" ]     && ADMIN_LISTEN="${OPT[listen]}"
+        write_config
+        return 0
+    fi
+    echo -e "${BLUE}--- Accès au panneau web d'administration ---${NC}"
+    local h
+    read -p "Nom d'hôte pour le lien [${ADMIN_HOST}] : " h
+    h=$(echo "$h" | tr -d ' ')
+    if [ -n "$h" ]; then
+        if validate_domain "$h"; then ADMIN_HOST="$h"
+        else echo -e "${RED}Nom d'hôte invalide, valeur conservée : ${ADMIN_HOST}${NC}"; fi
+    fi
+
+    echo "Sur quelle interface le panneau doit-il être disponible ?"
+    echo "  1) 127.0.0.1  — localhost uniquement (recommandé ; accès distant par tunnel SSH)"
+    echo "  2) 0.0.0.0    — toutes les interfaces (accessible depuis le réseau) [!]"
+    echo "  3) une IP précise de ce serveur"
+    local ips; ips=$(ip -o -4 addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | paste -sd', ' -)
+    [ -n "$ips" ] && echo -e "     IP disponibles : ${YELLOW}${ips}${NC}"
+    local c
+    read -p "Choix [1] : " c
+    case "$c" in
+        2) ADMIN_LISTEN="0.0.0.0"
+           echo -e "${YELLOW}[!] Le panneau sera joignable depuis le réseau : seul le mot de passe le protège. Préférez un tunnel SSH ou du HTTPS + accès restreint.${NC}" ;;
+        3) local ip; read -p "     IP à utiliser : " ip; ip=$(echo "$ip" | tr -d ' ')
+           if [[ "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then ADMIN_LISTEN="$ip"
+           else echo -e "${RED}IP invalide, retour à 127.0.0.1${NC}"; ADMIN_LISTEN="127.0.0.1"; fi ;;
+        *) ADMIN_LISTEN="127.0.0.1" ;;
+    esac
+    write_config
+}
+
 write_admin_vhost() {
+    local note="lié à ${ADMIN_LISTEN}"
+    [ "$ADMIN_LISTEN" = "127.0.0.1" ] && note="lié à 127.0.0.1 (accès distant via tunnel SSH)"
     cat > /etc/nginx/sites-available/admin.lnmp << EOF
-# Panneau d'administration LNMP — lié à 127.0.0.1 (accès distant via tunnel SSH).
+# Panneau d'administration LNMP — ${note}.
+# Le démon lnmpd reste toujours sur 127.0.0.1 ; nginx relaie /api/ vers lui.
 server {
-    listen 127.0.0.1:80;
+    listen ${ADMIN_LISTEN}:80;
     server_name ${ADMIN_HOST};
     root ${WEBUI_DEST};
     index index.html;
@@ -625,27 +676,45 @@ EOF
 install_web_admin() {
     echo -e "${YELLOW}[8/8] Interface web d'administration...${NC}"
 
-    # 1. Déployer le panneau statique
+    # 1. Choix du lien (nom d'hôte) et de l'interface d'écoute
+    configure_admin_access
+
+    # 2. Déployer le panneau statique
     mkdir -p "$WEBUI_DEST"
     [ -d "$WEBUI_SRC" ] && cp -a "$WEBUI_SRC/." "$WEBUI_DEST/"
     chown -R www-data:webdev "$WEBUI_DEST" 2>/dev/null || true
 
-    # 2. Mot de passe admin (si absent)
+    # 3. Mot de passe admin (si absent)
     if [ ! -f "$ADMIN_CONF" ]; then
         echo -e "${BLUE}Définissez le mot de passe du panneau web (http://${ADMIN_HOST})${NC}"
         set_admin_password
     fi
 
-    # 3. Vhost admin (localhost) + /etc/hosts
+    # 4. Vhost admin + /etc/hosts (le nom d'hôte pointe vers l'IP d'écoute)
     write_admin_vhost
     ln -sf /etc/nginx/sites-available/admin.lnmp /etc/nginx/sites-enabled/
-    hosts_add "$ADMIN_HOST"
+    hosts_remove "$ADMIN_HOST"
+    hosts_add "$ADMIN_HOST" "$(admin_hosts_ip)"
 
-    # 4. Démon d'administration
+    # 5. Démon d'administration
     systemctl enable --now lnmp-admin 2>/dev/null
 
     reload_nginx
-    echo -e "${GREEN}Panneau web prêt : http://${ADMIN_HOST}${NC}"
+    echo -e "${GREEN}Panneau web prêt : http://${ADMIN_HOST}  (écoute ${ADMIN_LISTEN}:80)${NC}"
+}
+
+# Reconfigure le lien / l'interface du panneau après l'installation.
+reconfigure_admin() {
+    if [ ! -f "$WEBUI_DEST/index.html" ]; then
+        emit_result err "Le panneau n'est pas installé (lancez 'lnmp install')."; return 1
+    fi
+    configure_admin_access
+    write_admin_vhost
+    ln -sf /etc/nginx/sites-available/admin.lnmp /etc/nginx/sites-enabled/
+    hosts_remove "$ADMIN_HOST"
+    hosts_add "$ADMIN_HOST" "$(admin_hosts_ip)"
+    if ! reload_nginx; then emit_result err "Config Nginx invalide, changement non appliqué."; return 1; fi
+    emit_result ok "Panneau : http://${ADMIN_HOST} (écoute ${ADMIN_LISTEN}:80)"
 }
 
 # ==============================================================================
@@ -849,7 +918,9 @@ Bases de données :
   db-drop <nom>         Supprimer une base (--yes pour ne pas confirmer)
 
 Interface web :
-  set-password          Définir le mot de passe du panneau (http://admin.lnmp)
+  set-password          Définir le mot de passe du panneau
+  admin-url             Changer le lien et l'interface d'écoute du panneau
+                        (--admin-host <nom>, --listen <127.0.0.1|0.0.0.0|IP>)
 
 Sans commande : menu interactif.
 EOF
@@ -888,6 +959,7 @@ if [ $# -gt 0 ]; then
         db-list)     db_list; exit $? ;;
         db-drop)     db_drop "$arg"; exit $? ;;
         set-password) set_admin_password "$arg"; exit $? ;;
+        admin-url)    reconfigure_admin; exit $? ;;
         *)           emit_result err "Commande inconnue : $cmd"; [ "$JSON_MODE" -eq 0 ] && show_help; exit 1 ;;
     esac
 fi

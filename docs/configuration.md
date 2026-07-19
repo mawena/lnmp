@@ -5,7 +5,7 @@
 | Fichier                              | Rôle                                                        |
 | ------------------------------------ | ----------------------------------------------------------- |
 | `/etc/nginx/lnmp_apps.list`          | Registre des applications (`id:fqdn:chemin:domaine_base`).  |
-| `/etc/lnmp/lnmp.conf`                | Domaine par défaut, version PHP, port du démon.             |
+| `/etc/lnmp/lnmp.conf`                | Domaine par défaut, PHP, port du démon, hôte + interface du panneau (`ADMIN_HOST`, `ADMIN_LISTEN`). |
 | `/etc/lnmp/domains.list`             | Domaines de base (`nom:local\|remote`).                     |
 | `/etc/lnmp/admin.conf`               | Hash du mot de passe + secret de session (root, `600`).     |
 | `/var/log/lnmp_install_state`        | Étape d'installation atteinte (reprise sur incident, 0–8).  |
