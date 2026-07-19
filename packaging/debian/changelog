@@ -10,6 +10,17 @@ lnmp (1.11-1) UNRELEASED; urgency=medium
     l'interface d'écoute (127.0.0.1 / 0.0.0.0 / IP précise). Nouvelle commande
     « admin-url » pour les changer après coup (--admin-host, --listen). Le
     démon lnmpd reste toujours sur 127.0.0.1.
+  * Installation complète en une commande : « apt install lnmp » installe la
+    pile (Nginx, MariaDB, PHP, Certbot — de nouveau en dépendances) ET la
+    configure automatiquement via le postinst (groupe webdev, droits, vhost
+    témoin, panneau web, démon). Plus besoin de « lnmp install » ensuite (qui
+    reste disponible, ainsi que le menu).
+  * Désinstallation propre par apt : « apt remove/purge/autoremove lnmp »
+    retire aussi le service web d'administration (prerm/postrm) ; purge =
+    suppression de /etc/lnmp.
+  * « lnmp uninstall » supprime désormais aussi le paquet lnmp lui-même.
+  * PHP : la version est détectée automatiquement (socket FPM) au lieu d'être
+    figée.
 
  -- Charles Gamligo <gamligocharles@gmail.com>  Sun, 19 Jul 2026 03:27:47 +0000
 

@@ -28,17 +28,20 @@ bases de données en quelques secondes.
 ## 📦 Installation
 
 ```bash
-# 1. Dépôt APT + paquet
+# Dépôt APT + installation complète (la pile est installée ET configurée)
 echo "deb [trusted=yes] https://mawena.cloud/repo /" | sudo tee /etc/apt/sources.list.d/mawena.list
 sudo apt update && sudo apt install lnmp
 
-# 2. Installer et configurer la pile (demande le domaine par défaut + mot de passe admin)
-sudo lnmp install
+# Définir le mot de passe du panneau web (non fixé par défaut)
+sudo lnmp set-password
 ```
 
-À la fin de l'installation, le panneau web est disponible sur
-`http://admin.lnmp` (ajoutez `127.0.0.1 admin.lnmp` sur votre poste, ou passez
-par un tunnel SSH pour un VPS — voir [docs/usage.md](docs/usage.md)).
+`apt install lnmp` installe **et configure** toute la pile (Nginx, MariaDB, PHP,
+Certbot), déploie le panneau et démarre le démon — rien d'autre à lancer. Le
+panneau est ensuite disponible sur `http://admin.lnmp` (ajoutez
+`127.0.0.1 admin.lnmp` sur votre poste, ou tunnel SSH pour un VPS — voir
+[docs/usage.md](docs/usage.md)). `sudo lnmp install` reste disponible pour une
+(re)configuration interactive.
 
 ## 🚀 Démarrage rapide
 

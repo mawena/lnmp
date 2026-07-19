@@ -33,11 +33,15 @@ Lancer ou reprendre l'installation de la pile LNMP. L'installation est
 idempotente : elle reprend à la dernière étape réussie.
 .TP
 .B uninstall
-Désinstaller de façon sélective. Par défaut, seul le service web
-d'administration LNMP est retiré ; Nginx, MariaDB, PHP et les applications sont
-conservés. En mode interactif, chaque composant est proposé à la suppression.
-Options : \fB\-\-nginx\fR, \fB\-\-mariadb\fR, \fB\-\-php\fR, \fB\-\-apps\fR
-(supprimer aussi ces éléments).
+Désinstaller de façon sélective, puis retirer le paquet lnmp lui-même. Par
+défaut, seul le service web d'administration LNMP et le paquet sont retirés ;
+Nginx, MariaDB, PHP et les applications sont conservés. En mode interactif,
+chaque composant est proposé à la suppression. Options : \fB\-\-nginx\fR,
+\fB\-\-mariadb\fR, \fB\-\-php\fR, \fB\-\-apps\fR (supprimer aussi ces éléments).
+.PP
+Note : « apt remove/purge/autoremove lnmp » retire également le service web
+d'administration (le paquet installe et configure la pile complète à
+« apt install lnmp »).
 .TP
 .B doctor
 Diagnostiquer l'état de la pile (services, configuration Nginx, certificats).

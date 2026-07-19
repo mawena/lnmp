@@ -1,0 +1,27 @@
+#!/bin/sh
+# postrm du paquet lnmp : « apt remove/purge/autoremove lnmp » retire aussi le
+# service web d'administration (vhost, panneau, entrées /etc/hosts). Sur purge,
+# la configuration /etc/lnmp est également supprimée. Défensif : n'échoue jamais.
+set -e
+
+case "$1" in
+    remove|purge)
+        systemctl disable --now lnmp-admin 2>/dev/null || true
+        rm -f /etc/nginx/sites-enabled/admin.lnmp /etc/nginx/sites-available/admin.lnmp
+        rm -rf /var/www/html/lnmp
+        # Retirer les entrées /etc/hosts gérées par lnmp
+        sed -i '/#[[:space:]]*lnmp[[:space:]]*$/d' /etc/hosts 2>/dev/null || true
+        if command -v nginx >/dev/null 2>&1 && [ -f /etc/nginx/nginx.conf ]; then
+            nginx -t >/dev/null 2>&1 && systemctl reload nginx 2>/dev/null || true
+        fi
+        ;;
+esac
+
+if [ "$1" = "purge" ]; then
+    rm -rf /etc/lnmp
+    rm -f /var/log/lnmp_install_state /etc/nginx/lnmp_apps.list
+fi
+
+#DEBHELPER#
+
+exit 0

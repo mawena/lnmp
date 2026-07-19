@@ -1,0 +1,16 @@
+#!/bin/sh
+# postinst du paquet lnmp : « apt install lnmp » installe la pile (via les
+# dépendances) PUIS la configure ici (groupe webdev, droits, vhosts, panneau
+# web, démon). On ne lance PAS apt ici (verrou dpkg) : les paquets nécessaires
+# sont déjà fournis par les dépendances du paquet.
+set -e
+
+if [ "$1" = "configure" ]; then
+    if [ -x /usr/bin/lnmp ]; then
+        /usr/bin/lnmp _postinstall || true
+    fi
+fi
+
+#DEBHELPER#
+
+exit 0

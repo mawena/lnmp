@@ -7,15 +7,17 @@ Standards-Version: 4.6.2
 
 Package: lnmp
 Architecture: all
-Depends: ${misc:Depends}, bash, python3
-Recommends: acl, curl, wget
-Suggests: nginx, mariadb-server, php-fpm, certbot, python3-certbot-nginx
-Description: Gestionnaire CLI complet pour la pile LNMP et SSL.
- Outil d'administration pour le déploiement et la gestion rapide
- d'applications web sur Ubuntu (Nginx, MariaDB, PHP, Certbot) avec un
- panneau web d'administration.
+Depends: ${misc:Depends}, bash, python3, acl,
+ nginx, mariadb-server,
+ php-fpm, php-mysql, php-cli, php-curl, php-xml, php-mbstring, php-zip,
+ certbot, python3-certbot-nginx
+Recommends: curl, wget
+Description: Gestionnaire complet de pile web LNMP avec panneau d'administration.
+ Déploie et administre une pile web complète sur Ubuntu : Nginx, MariaDB,
+ PHP et Certbot (SSL), avec gestion de domaines multiples, de bases de
+ données et un panneau web d'administration (http://admin.lnmp).
  .
- La pile elle-même (Nginx, MariaDB, PHP, Certbot) est installée par la
- commande « lnmp install », de façon idempotente : le paquet ne l'impose
- donc pas comme dépendance, ce qui évite qu'un composant cassé bloque
- l'installation de l'outil.
+ « apt install lnmp » installe et configure la pile complète directement.
+ La désinstallation du paquet (apt remove/purge/autoremove) retire aussi
+ le service web d'administration. L'outil « lnmp » reste utilisable en
+ ligne de commande comme via son menu interactif.

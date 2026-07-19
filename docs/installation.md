@@ -37,28 +37,37 @@ lnmp --version
 man lnmp
 ```
 
-## Installer la pile LNMP
+## La pile est installée automatiquement
 
-L'installation du **paquet** ne fait que déposer l'outil. Pour installer et
-configurer la **pile** (Nginx, MariaDB, PHP, Certbot) :
+`apt install lnmp` **installe et configure la pile complète** (Nginx, MariaDB,
+PHP, Certbot), déploie le panneau web et démarre le démon d'administration. Il
+n'y a rien d'autre à lancer.
+
+Il ne reste qu'à **définir le mot de passe** du panneau (non fixé par défaut,
+pour des raisons de sécurité) :
 
 ```bash
-sudo lnmp install
+sudo lnmp set-password
 ```
 
-L'installation vous demande le **domaine par défaut** (ex. `mawena.cloud`, ou
-`test` pour du local) et le **mot de passe du panneau web**. Elle est
-**idempotente** : en cas d'interruption, relancez la même commande — elle
-reprend à la dernière étape réussie (état stocké dans
-`/var/log/lnmp_install_state`).
+Le panneau est alors accessible sur **`http://admin.lnmp`** (voir
+[usage.md](usage.md#panneau-web-dadministration) pour l'accès local ou par
+tunnel SSH, et pour choisir un autre lien/interface avec `lnmp admin-url`).
 
-À la fin, le panneau d'administration est accessible sur **`http://admin.lnmp`**
-(voir [usage.md](usage.md#panneau-web-dadministration) pour l'accès local ou par
-tunnel SSH).
+### Réinstaller / reconfigurer manuellement
+
+`sudo lnmp install` reste disponible (menu ou ligne de commande) pour
+(re)configurer la pile de façon interactive — il demande le domaine par défaut,
+le mot de passe et l'interface du panneau. La commande est **idempotente**.
 
 ## Désinstallation
 
 ```bash
-sudo lnmp uninstall      # Retire la pile et ses composants
-sudo apt remove lnmp     # Retire l'outil lnmp lui-même
+# Option 1 — via apt (retire lnmp + le service web via les scripts du paquet)
+sudo apt purge lnmp          # + suppression de /etc/lnmp
+sudo apt autoremove          # retire aussi les dépendances devenues inutiles
+
+# Option 2 — via lnmp (sélectif : garde Nginx/MariaDB/PHP par défaut, puis
+# retire le paquet lnmp lui-même)
+sudo lnmp uninstall
 ```

@@ -720,6 +720,67 @@ reconfigure_admin() {
 # ==============================================================================
 # INSTALLATION / DÉSINSTALLATION
 # ==============================================================================
+
+# Aligne PHP_VERSION sur la version de PHP réellement installée (socket FPM).
+detect_php_version() {
+    local v
+    v=$(ls -1 /etc/php 2>/dev/null | grep -E '^[0-9]+\.[0-9]+$' | sort -V | tail -n1)
+    [ -n "$v" ] && PHP_VERSION="$v"
+}
+
+# Configuration de la pile SANS apt (les paquets sont fournis par les
+# dépendances du paquet). Idempotent et non interactif : utilisé par le
+# postinst du paquet pour un « apt install lnmp » complet.
+configure_stack() {
+    detect_php_version
+    echo "-> Configuration de la pile LNMP..."
+
+    # Domaine par défaut (non interactif) si absent
+    if [ -z "$DEFAULT_DOMAIN" ]; then
+        DEFAULT_DOMAIN="localhost"
+        grep -qiE '^localhost:' "$DOMAINS_FILE" 2>/dev/null || echo "localhost:remote" >> "$DOMAINS_FILE"
+        write_config
+    fi
+
+    # Groupe webdev + droits sur /var/www/html (idempotent)
+    getent group webdev >/dev/null || groupadd webdev
+    [ -n "$REAL_USER" ] && [ "$REAL_USER" != "root" ] && usermod -aG webdev "$REAL_USER" 2>/dev/null || true
+    id -u www-data >/dev/null 2>&1 && usermod -aG webdev www-data 2>/dev/null || true
+    mkdir -p /var/www/html
+    chown -R www-data:webdev /var/www/html 2>/dev/null || true
+    find /var/www/html -type d -exec chmod g+s {} \; 2>/dev/null || true
+    chmod -R 775 /var/www/html 2>/dev/null || true
+    if command -v setfacl >/dev/null 2>&1; then
+        setfacl -R -d -m g:webdev:rwx /var/www/html 2>/dev/null || true
+        setfacl -R -d -m u:www-data:rwx /var/www/html 2>/dev/null || true
+    fi
+
+    # Application témoin (visible immédiatement sur http://<domaine par défaut>)
+    local ex="/var/www/html/example/public"
+    mkdir -p "$ex"
+    [ -f "$ex/index.php" ] || echo "<?php echo 'Bienvenue sur LNMP !'; ?>" > "$ex/index.php"
+    write_vhost "example" "$DEFAULT_DOMAIN" "$ex"
+    ln -sf /etc/nginx/sites-available/example /etc/nginx/sites-enabled/ 2>/dev/null || true
+    [ -f /etc/nginx/sites-enabled/default ] && rm -f /etc/nginx/sites-enabled/default
+
+    # Services de la pile
+    systemctl enable --now nginx 2>/dev/null || true
+    systemctl enable --now mariadb 2>/dev/null || true
+    systemctl enable --now "php${PHP_VERSION}-fpm" 2>/dev/null || true
+
+    # Interface web d'administration (valeurs par défaut/config, sans prompt)
+    mkdir -p "$WEBUI_DEST"
+    [ -d "$WEBUI_SRC" ] && cp -a "$WEBUI_SRC/." "$WEBUI_DEST/"
+    chown -R www-data:webdev "$WEBUI_DEST" 2>/dev/null || true
+    write_admin_vhost
+    ln -sf /etc/nginx/sites-available/admin.lnmp /etc/nginx/sites-enabled/ 2>/dev/null || true
+    hosts_remove "$ADMIN_HOST"
+    hosts_add "$ADMIN_HOST" "$(admin_hosts_ip)"
+    systemctl enable --now lnmp-admin 2>/dev/null || true
+
+    reload_nginx 2>/dev/null || true
+}
+
 install_lnmp() {
     local current_step; current_step=$(get_state)
     echo -e "${BLUE}=== Installation de la pile LNMP ===${NC}"
@@ -871,7 +932,18 @@ uninstall_lnmp() {
         reload_nginx
     fi
 
-    emit_result ok "Désinstallation terminée."
+    # Retrait de l'application lnmp elle-même (le paquet). En dernier : le
+    # processus bash en cours garde un descripteur ouvert sur /usr/bin/lnmp,
+    # donc la suppression du fichier ne l'interrompt pas. Le postrm du paquet
+    # nettoie de son côté le service web (idempotent).
+    echo -e "${YELLOW}-> Suppression du paquet lnmp...${NC}"
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get purge -y lnmp >/dev/null 2>&1 || dpkg --purge lnmp >/dev/null 2>&1 || true
+    else
+        dpkg --purge lnmp >/dev/null 2>&1 || true
+    fi
+
+    emit_result ok "Désinstallation terminée — lnmp a été supprimé."
     [ "$JSON_MODE" -eq 0 ] && exit 0
 }
 
@@ -936,6 +1008,12 @@ if [ $# -gt 0 ]; then
         version)     show_version; exit 0 ;;
         install)     install_lnmp; exit 0 ;;
         uninstall)   uninstall_lnmp; exit $? ;;
+        _postinstall) # appelé par le postinst du paquet : configure la pile
+                      # (paquets déjà fournis par les dépendances), sans prompt.
+                      configure_stack
+                      echo "LNMP configuré. Panneau : http://${ADMIN_HOST} (écoute ${ADMIN_LISTEN}:80)"
+                      echo "Définissez le mot de passe du panneau : sudo lnmp set-password"
+                      exit 0 ;;
         doctor)      doctor; exit 0 ;;
         status)      stack_status; exit 0 ;;
         list)        list_web_apps; exit 0 ;;

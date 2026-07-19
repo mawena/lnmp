@@ -1,0 +1,14 @@
+#!/bin/sh
+# prerm du paquet lnmp : arrêter le service web d'administration avant que les
+# fichiers du paquet ne soient retirés (sur remove/purge, pas sur upgrade).
+set -e
+
+case "$1" in
+    remove|purge)
+        systemctl disable --now lnmp-admin 2>/dev/null || true
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0
