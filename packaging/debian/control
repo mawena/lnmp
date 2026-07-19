@@ -11,7 +11,7 @@ Depends: ${misc:Depends}, bash, python3, acl,
  nginx, mariadb-server,
  php-fpm, php-mysql, php-cli, php-curl, php-xml, php-mbstring, php-zip,
  certbot, python3-certbot-nginx
-Recommends: curl, wget
+Recommends: curl, wget, mkcert, libnss3-tools
 Description: Gestionnaire complet de pile web LNMP avec panneau d'administration.
  Déploie et administre une pile web complète sur Ubuntu : Nginx, MariaDB,
  PHP et Certbot (SSL), avec gestion de domaines multiples, de bases de

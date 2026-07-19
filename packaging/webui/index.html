@@ -312,7 +312,7 @@ async function viewApps(){
           <label>Email pour les alertes d'expiration (option)</label>
           <input type="text" id="a-ssl-email" placeholder="admin@exemple.com">
         </div>
-        <p class="field-note full" id="a-ssl-note" style="display:none">Le SSL Let's Encrypt nécessite un domaine public pointant vers ce serveur — indisponible pour un domaine local.</p>
+        <p class="field-note full" id="a-ssl-note" style="display:none"></p>
       </div>
       <div class="form-foot"><button class="btn btn-primary btn-sm" id="a-add">Ajouter</button></div>
     </div>
@@ -327,15 +327,22 @@ async function viewApps(){
   if(dr.data&&dr.data.default) sel.value=dr.data.default;
 
   const ssl=document.getElementById('a-ssl'), sslBox=document.getElementById('a-ssl-box'), sslNote=document.getElementById('a-ssl-note');
+  const sslLabel=ssl.parentElement;
   function syncSsl(){
     const opt=sel.options[sel.selectedIndex];
     const isLocal = opt && opt.dataset.type==='local';
-    ssl.disabled = !!isLocal;
-    if(isLocal){ ssl.checked=false; sslNote.style.display=''; } else { sslNote.style.display='none'; }
-    sslBox.style.display = (ssl.checked && !ssl.disabled) ? '' : 'none';
+    // Domaine local → mkcert (certificat de confiance locale) ; distant → Let's Encrypt.
+    sslLabel.lastChild.textContent = isLocal
+      ? ' Activer le SSL (certificat local mkcert) après la création'
+      : ' Activer le SSL (HTTPS Let\'s Encrypt) après la création';
+    if(isLocal){ sslNote.textContent='Domaine local : un certificat de confiance locale est généré via mkcert (aucun domaine public requis).'; sslNote.style.display=''; }
+    else { sslNote.style.display='none'; }
+    // L'email ne sert qu'à Let's Encrypt (distant) — masqué pour un domaine local.
+    document.querySelector('#a-ssl-box label').textContent = 'Email pour les alertes d\'expiration (option)';
+    sslBox.style.display = (ssl.checked && !isLocal) ? '' : 'none';
   }
   sel.onchange=syncSsl;
-  ssl.onchange=()=>{ sslBox.style.display = (ssl.checked && !ssl.disabled) ? '' : 'none'; };
+  ssl.onchange=syncSsl;
   syncSsl();
 
   document.getElementById('a-add').onclick=addApp;

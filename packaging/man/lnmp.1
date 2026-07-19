@@ -81,10 +81,14 @@ Reconstruire le registre à partir des configurations Nginx réelles.
 .SH GESTION SSL
 .TP
 .BI "add-ssl " id
-Ajouter un certificat SSL Let's Encrypt à une application.
+Ajouter un certificat SSL à une application. La méthode est choisie
+automatiquement selon le domaine : \fBLet's Encrypt\fR (Certbot) pour un
+domaine distant (option \fB\-\-email\fR), \fBmkcert\fR (certificat de confiance
+locale) pour un domaine local. Dans les deux cas le vhost passe en HTTPS avec
+redirection \fBhttp\fR vers \fBhttps\fR.
 .TP
 .BI "remove-ssl " id
-Retirer le certificat SSL d'une application.
+Retirer le certificat SSL d'une application (Let's Encrypt ou mkcert).
 .SH GESTION DES DOMAINES
 .TP
 .B domain list

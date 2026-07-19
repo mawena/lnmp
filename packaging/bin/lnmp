@@ -30,6 +30,7 @@ ADMIN_CONF="$CONFIG_DIR/admin.conf"
 STATE_FILE="/var/log/lnmp_install_state"
 APPS_REGISTRY="/etc/nginx/lnmp_apps.list"
 HOSTS_FILE="/etc/hosts"
+CERTS_DIR="$CONFIG_DIR/certs"
 WEBUI_SRC="/usr/share/lnmp/webui"
 WEBUI_DEST="/var/www/html/lnmp"
 
@@ -138,6 +139,32 @@ write_vhost() {
 server {
     listen 80;
     server_name ${server_name};
+    root ${root};
+    index index.html index.php;
+    charset utf-8;
+    location / { try_files \$uri \$uri/ /index.php?\$query_string; }
+    location ~ \.php\$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/var/run/php/php${PHP_VERSION}-fpm.sock;
+    }
+}
+EOF
+}
+
+# Vhost sécurisé par un certificat local (mkcert) : HTTP redirige vers HTTPS.
+write_vhost_ssl() {
+    local id=$1 server_name=$2 root=$3 cert=$4 key=$5
+    cat > /etc/nginx/sites-available/"$id" << EOF
+server {
+    listen 80;
+    server_name ${server_name};
+    return 301 https://\$host\$request_uri;
+}
+server {
+    listen 443 ssl;
+    server_name ${server_name};
+    ssl_certificate     ${cert};
+    ssl_certificate_key ${key};
     root ${root};
     index index.html index.php;
     charset utf-8;
@@ -357,8 +384,13 @@ add_web_app() {
     echo "${app_id}:${fqdn}:${app_path}:${base_domain}" >> "$APPS_REGISTRY"
     emit_result ok "Application '$app_id' ajoutée : http://${fqdn}"
 
-    if [ "$JSON_MODE" -eq 0 ] && ! domain_is_local "$base_domain"; then
-        read -p "Générer un certificat SSL Let's Encrypt ? (y/n) : " gen_ssl
+    if [ "$JSON_MODE" -eq 0 ]; then
+        local gen_ssl
+        if domain_is_local "$base_domain"; then
+            read -p "Générer un certificat SSL local (mkcert) ? (y/n) : " gen_ssl
+        else
+            read -p "Générer un certificat SSL Let's Encrypt ? (y/n) : " gen_ssl
+        fi
         [[ "$gen_ssl" =~ ^[Yy]$ ]] && add_ssl_cert "$app_id"
     fi
 }
@@ -437,14 +469,58 @@ delete_web_app() {
     emit_result ok "Application '$target_id' supprimée."
 }
 
+# Installe la CA locale mkcert une seule fois (idempotent).
+ensure_mkcert_ca() {
+    if ! command -v mkcert >/dev/null 2>&1; then
+        emit_result err "mkcert n'est pas installé (sudo apt install mkcert libnss3-tools)."
+        return 1
+    fi
+    if [ ! -f "$CONFIG_DIR/.mkcert-ca-installed" ]; then
+        mkcert -install >/dev/null 2>&1 || true
+        mkdir -p "$CONFIG_DIR"; touch "$CONFIG_DIR/.mkcert-ca-installed"
+    fi
+    return 0
+}
+
+# SSL d'un domaine LOCAL via mkcert (certificat de confiance locale).
+add_ssl_local() {
+    local id=$1 domain=$2 root
+    ensure_mkcert_ca || return 1
+    root=$(grep -E "^${id}:" "$APPS_REGISTRY" | head -n1 | cut -d: -f3)
+    [ -z "$root" ] && root="/var/www/html/$id"
+    mkdir -p "$CERTS_DIR"
+    local cert="$CERTS_DIR/${domain}.pem" key="$CERTS_DIR/${domain}-key.pem"
+    if ! mkcert -cert-file "$cert" -key-file "$key" "$domain" >/dev/null 2>&1; then
+        emit_result err "Échec de la génération du certificat mkcert pour $domain."
+        return 1
+    fi
+    chmod 640 "$key" 2>/dev/null || true
+    write_vhost_ssl "$id" "$domain" "$root" "$cert" "$key"
+    ln -sf /etc/nginx/sites-available/"$id" /etc/nginx/sites-enabled/
+    if ! reload_nginx; then
+        emit_result err "Config Nginx invalide après ajout SSL local."
+        return 1
+    fi
+    emit_result ok "SSL local (mkcert) activé pour https://$domain"
+}
+
 add_ssl_cert() {
     local target_id="${OPT[id]:-$1}"
     if [ -z "$target_id" ] && [ "$JSON_MODE" -eq 0 ]; then
         read -p "ID de l'application à sécuriser : " target_id
     fi
     [ -z "$target_id" ] && { emit_result err "ID requis."; return 1; }
-    local domain; domain=$(grep -E "^${target_id}:" "$APPS_REGISTRY" | head -n1 | cut -d: -f2)
+    local line domain base
+    line=$(grep -E "^${target_id}:" "$APPS_REGISTRY" | head -n1)
+    domain=$(echo "$line" | cut -d: -f2)
+    base=$(echo "$line" | cut -d: -f4)
     if [ -z "$domain" ]; then emit_result err "ID inconnu."; return 1; fi
+
+    # Domaine local → mkcert ; domaine distant → Let's Encrypt (certbot).
+    if [ -n "$base" ] && domain_is_local "$base"; then
+        add_ssl_local "$target_id" "$domain"
+        return
+    fi
 
     local le_email="${OPT[email]}"
     if [ "$JSON_MODE" -eq 1 ]; then
@@ -470,8 +546,24 @@ remove_ssl_cert() {
         read -p "ID de l'application : " target_id
     fi
     [ -z "$target_id" ] && { emit_result err "ID requis."; return 1; }
-    local domain; domain=$(grep -E "^${target_id}:" "$APPS_REGISTRY" | head -n1 | cut -d: -f2)
+    local line domain base root
+    line=$(grep -E "^${target_id}:" "$APPS_REGISTRY" | head -n1)
+    domain=$(echo "$line" | cut -d: -f2)
+    root=$(echo "$line" | cut -d: -f3)
+    base=$(echo "$line" | cut -d: -f4)
     if [ -z "$domain" ]; then emit_result err "ID inconnu."; return 1; fi
+
+    # Domaine local : supprimer les fichiers mkcert + rétablir le vhost HTTP.
+    if [ -n "$base" ] && domain_is_local "$base"; then
+        rm -f "$CERTS_DIR/${domain}.pem" "$CERTS_DIR/${domain}-key.pem"
+        [ -z "$root" ] && root="/var/www/html/$target_id"
+        write_vhost "$target_id" "$domain" "$root"
+        ln -sf /etc/nginx/sites-available/"$target_id" /etc/nginx/sites-enabled/
+        reload_nginx
+        emit_result ok "SSL local retiré pour $domain (retour en HTTP)."
+        return
+    fi
+
     certbot delete --cert-name "$domain" --non-interactive >/dev/null 2>&1
     reload_nginx
     emit_result ok "SSL retiré pour $domain."
@@ -508,11 +600,24 @@ doctor() {
     echo -e "\n${YELLOW}Domaines :${NC}"; domain_list
     echo -e "\n${YELLOW}Applications :${NC}"
     if [ -s "$APPS_REGISTRY" ]; then list_web_apps; else echo "  Aucune."; fi
-    echo -e "\n${YELLOW}Certificats SSL :${NC}"
+    echo -e "\n${YELLOW}Certificats SSL (distants — Let's Encrypt) :${NC}"
     if command -v certbot >/dev/null 2>&1; then
         certbot certificates 2>/dev/null | grep -E "Certificate Name|Expiry Date" | sed 's/^/  /' || echo "  Aucun."
     else
         echo "  Certbot non installé."
+    fi
+    echo -e "\n${YELLOW}Certificats SSL (locaux — mkcert) :${NC}"
+    if command -v mkcert >/dev/null 2>&1; then
+        if ls "$CERTS_DIR"/*.pem >/dev/null 2>&1; then
+            for c in "$CERTS_DIR"/*.pem; do
+                case "$c" in *-key.pem) continue ;; esac
+                echo "  ● $(basename "$c" .pem)"
+            done
+        else
+            echo "  Aucun."
+        fi
+    else
+        echo "  mkcert non installé (sudo apt install mkcert libnss3-tools)."
     fi
 }
 
@@ -975,7 +1080,8 @@ Applications :
   enable  <id>          Activer une application
   disable <id>          Désactiver une application
   delete  <id>          Supprimer une application
-  add-ssl <id>          Générer un certificat SSL (--email)
+  add-ssl <id>          Générer un certificat SSL — Let's Encrypt (distant,
+                        --email) ou mkcert (domaine local, automatique)
   remove-ssl <id>       Retirer un certificat SSL
   reload-app            Reconstruire le registre depuis Nginx
 

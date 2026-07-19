@@ -72,6 +72,28 @@ sudo lnmp add --id shop --domain mawena.cloud --apex   # http://mawena.cloud
 Pour un domaine marqué **local**, LNMP ajoute et retire tout seul les entrées
 `/etc/hosts` (`127.0.0.1 blog.test`) à la création et à la suppression de l'app.
 
+## SSL : local (mkcert) ou distant (Let's Encrypt)
+
+`lnmp add-ssl <id>` choisit automatiquement la méthode selon le domaine :
+
+- **Domaine distant** → **Let's Encrypt** via Certbot (le domaine doit pointer
+  vers le serveur). Option `--email` pour les alertes d'expiration.
+- **Domaine local** (façon Laragon) → **mkcert** : un certificat de confiance
+  locale est généré (aucun domaine public requis), et le vhost passe en HTTPS
+  avec redirection `http → https`.
+
+```bash
+sudo lnmp add-ssl blog        # blog.test (local)  → mkcert
+sudo lnmp add-ssl shop        # shop.mawena.cloud  → Let's Encrypt
+sudo lnmp remove-ssl blog     # retire le certificat et revient en HTTP
+```
+
+> **Prérequis mkcert** : `sudo apt install mkcert libnss3-tools`. La première
+> génération locale installe la CA mkcert dans le magasin de confiance système
+> (`mkcert -install`, exécuté automatiquement). Pour qu'un navigateur sur une
+> **autre** machine fasse confiance au certificat, importez-y la CA mkcert
+> (`mkcert -CAROOT`).
+
 ## Panneau web d'administration
 
 L'installation déploie un panneau sur **`http://admin.lnmp`** (lié à

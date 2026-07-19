@@ -20,7 +20,8 @@ bases de données en quelques secondes.
   domaines, bases de données, système — protégée par mot de passe.
 - 🌐 **Domaines multiples** local/distant ; les domaines locaux mettent à jour
   `/etc/hosts` automatiquement (façon Laragon).
-- 🔒 **SSL en un clic** via Let's Encrypt avec redirection HTTPS.
+- 🔒 **SSL en un clic** : Let's Encrypt (domaines distants) ou **mkcert**
+  (domaines locaux, certificat de confiance locale) — redirection HTTPS auto.
 - 🗄️ **Bases de données** : base + utilisateur dédié en une commande.
 - 🩺 **Diagnostic** intégré (`doctor`) et sortie **`--json`** scriptable.
 - 🖱️ **Trois interfaces** équivalentes : menu interactif, CLI, panneau web.
