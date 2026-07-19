@@ -576,10 +576,14 @@ stack_status() {
     if [ "$JSON_MODE" -eq 1 ]; then
         svc() { systemctl is-active --quiet "$1" 2>/dev/null && echo true || echo false; }
         local ng=false; nginx -t >/dev/null 2>&1 && ng=true
+        # grep -c écrit toujours un nombre sur stdout mais renvoie 1 quand le
+        # compte est 0 : on ne peut donc pas utiliser « || echo 0 » (double sortie).
+        local apps_count domains_count
+        apps_count=$(grep -cvE '^[[:space:]]*$' "$APPS_REGISTRY" 2>/dev/null); apps_count=${apps_count:-0}
+        domains_count=$(grep -cvE '^[[:space:]]*$' "$DOMAINS_FILE" 2>/dev/null); domains_count=${domains_count:-0}
         printf '{"ok":true,"version":"%s","services":{"nginx":%s,"mariadb":%s,"php":%s},"nginx_config":%s,"apps":%s,"domains":%s}\n' \
             "$(json_escape "$VERSION")" "$(svc nginx)" "$(svc mariadb)" "$(svc "php${PHP_VERSION}-fpm")" \
-            "$ng" "$(grep -cvE '^\s*$' "$APPS_REGISTRY" 2>/dev/null || echo 0)" \
-            "$(grep -cvE '^\s*$' "$DOMAINS_FILE" 2>/dev/null || echo 0)"
+            "$ng" "$apps_count" "$domains_count"
         return
     fi
     doctor
