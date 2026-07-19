@@ -1,7 +1,7 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: lnmp
 Upstream-Contact: Charles Gamligo <gamligocharles@gmail.com>
-Source: https://github.com/CharlesGamligo/lnmp
+Source: https://github.com/mawena/lnmp
 
 Files: *
 Copyright: 2026 Charles Gamligo <gamligocharles@gmail.com>

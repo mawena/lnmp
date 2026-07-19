@@ -60,7 +60,8 @@
   nav.side a.active{background:var(--surface-2);color:var(--text)}
   nav.side a .ic{width:18px;text-align:center;font-family:var(--mono)}
   aside .foot{margin-top:auto;padding-top:14px;border-top:1px solid var(--line-soft)}
-  main{padding:34px 40px;max-width:960px}
+  main{padding:34px clamp(24px,3.5vw,56px);width:100%;max-width:1600px;margin-inline:auto}
+  main>*{width:100%}
   @media(max-width:760px){.shell{grid-template-columns:1fr}aside{flex-direction:row;flex-wrap:wrap;align-items:center}
     nav.side{display:flex;flex-wrap:wrap;gap:4px}aside .brand{padding:6px 10px}aside .foot{margin:0;border:0;padding:0}main{padding:22px 18px}}
 
@@ -68,10 +69,10 @@
   .view-sub{color:var(--muted);font-size:14px;margin:0 0 26px}
   .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--coral)}
 
-  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:28px}
-  .stat{background:linear-gradient(180deg,var(--surface),var(--ink-2));border:1px solid var(--line-soft);border-radius:13px;padding:18px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px;margin-bottom:28px}
+  .stat{background:linear-gradient(180deg,var(--surface),var(--ink-2));border:1px solid var(--line-soft);border-radius:13px;padding:20px 22px}
   .stat .k{font-size:12px;color:var(--muted-2);font-family:var(--mono);text-transform:uppercase;letter-spacing:.08em}
-  .stat .v{font-size:26px;font-weight:700;margin-top:6px;letter-spacing:-.02em}
+  .stat .v{font-size:28px;font-weight:700;margin-top:8px;letter-spacing:-.02em}
   .pill{display:inline-flex;align-items:center;gap:7px;font-size:13px}
   .dot{width:9px;height:9px;border-radius:50%}
   .dot.on{background:var(--emerald)} .dot.off{background:var(--red)}
@@ -80,6 +81,11 @@
   .panel .ph{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--line-soft)}
   .panel .ph h3{margin:0;font-size:15px}
   .panel .pb{padding:6px 0}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+  @media(max-width:960px){.grid-2{grid-template-columns:1fr}}
+  .rcol{display:flex;flex-direction:column;gap:20px}
+  .quick{display:flex;flex-wrap:wrap;gap:10px;padding:16px 20px}
+  .panel .ph a.btn{text-decoration:none}
   table{border-collapse:collapse;width:100%;font-size:14px}
   th{text-align:left;font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted-2);padding:11px 20px;border-bottom:1px solid var(--line)}
   td{padding:12px 20px;border-bottom:1px solid var(--line-soft);color:var(--muted);vertical-align:middle}
@@ -234,20 +240,59 @@ function render(view){
 async function viewDashboard(){
   content().innerHTML=`<span class="eyebrow">Vue d'ensemble</span><h2 class="view-title">Tableau de bord</h2>
     <p class="view-sub">État en temps réel de la pile LNMP.</p><div id="dash">Chargement…</div>`;
-  const r=await api('GET','/status'); const d=r.data||{};
+  const [rs,ra,rd]=await Promise.all([api('GET','/status'),api('GET','/apps'),api('GET','/domains')]);
+  const d=rs.data||{};
   if(!d.ok){ document.getElementById('dash').innerHTML=`<div class="empty">Impossible de récupérer l'état.</div>`; return; }
   const s=d.services||{};
+  const apps=(ra.data&&ra.data.apps)||[];
+  const doms=(rd.data&&rd.data.domains)||[]; const def=(rd.data&&rd.data.default)||'';
   const svc=(name,on)=>`<div class="stat"><div class="k">${name}</div><div class="v"><span class="pill"><span class="dot ${on?'on':'off'}"></span>${on?'Actif':'Arrêté'}</span></div></div>`;
+
+  const appsRows = apps.length
+    ? apps.slice(0,8).map(a=>`<tr><td class="id">${esc(a.id)}</td>
+        <td><a href="http://${esc(a.domain)}" target="_blank" rel="noopener">${esc(a.domain)}</a></td>
+        <td style="text-align:right"><span class="tag ${a.active?'on':'off'}">${a.active?'actif':'inactif'}</span></td></tr>`).join('')
+    : `<tr><td colspan="3"><div class="empty">Aucune application.</div></td></tr>`;
+
+  const domsRows = doms.length
+    ? doms.map(x=>`<tr><td class="id">${esc(x.name)}${x.name===def?' <span class="tag" style="color:var(--amber);border-color:rgba(245,181,68,.4)">défaut</span>':''}</td>
+        <td style="text-align:right"><span class="tag ${x.type==='local'?'local':'remote'}">${x.type==='local'?'local':'distant'}</span></td></tr>`).join('')
+    : `<tr><td colspan="2"><div class="empty">Aucun domaine.</div></td></tr>`;
+
   document.getElementById('dash').innerHTML=`
     <div class="cards">
       ${svc('Nginx',s.nginx)} ${svc('MariaDB',s.mariadb)} ${svc('PHP-FPM',s.php)}
       <div class="stat"><div class="k">Config Nginx</div><div class="v"><span class="pill"><span class="dot ${d.nginx_config?'on':'off'}"></span>${d.nginx_config?'Valide':'Erreur'}</span></div></div>
+      <div class="stat"><div class="k">Applications</div><div class="v">${d.apps??apps.length}</div></div>
+      <div class="stat"><div class="k">Domaines</div><div class="v">${d.domains??doms.length}</div></div>
+      <div class="stat"><div class="k">Version</div><div class="v" style="font-size:20px;font-family:var(--mono)">${esc(d.version||'—')}</div></div>
     </div>
-    <div class="cards">
-      <div class="stat"><div class="k">Applications</div><div class="v">${d.apps??0}</div></div>
-      <div class="stat"><div class="k">Domaines</div><div class="v">${d.domains??0}</div></div>
-      <div class="stat"><div class="k">Version</div><div class="v" style="font-size:18px;font-family:var(--mono)">${esc(d.version||'—')}</div></div>
+
+    <div class="grid-2">
+      <div class="panel">
+        <div class="ph"><h3>Applications</h3><a class="btn btn-ghost btn-sm" data-goto="apps">Gérer</a></div>
+        <div class="pb"><table class="mini"><thead><tr><th>ID</th><th>Domaine</th><th style="text-align:right">Statut</th></tr></thead><tbody>${appsRows}</tbody></table></div>
+      </div>
+      <div class="rcol">
+        <div class="panel">
+          <div class="ph"><h3>Domaines</h3><a class="btn btn-ghost btn-sm" data-goto="domains">Gérer</a></div>
+          <div class="pb"><table class="mini"><thead><tr><th>Domaine</th><th style="text-align:right">Type</th></tr></thead><tbody>${domsRows}</tbody></table></div>
+        </div>
+        <div class="panel">
+          <div class="ph"><h3>Actions rapides</h3></div>
+          <div class="quick">
+            <button class="btn btn-primary btn-sm" data-goto="apps">Ajouter une application</button>
+            <button class="btn btn-ghost btn-sm" data-goto="domains">Ajouter un domaine</button>
+            <button class="btn btn-ghost btn-sm" data-goto="databases">Nouvelle base</button>
+            <button class="btn btn-ghost btn-sm" id="q-reload">Reconstruire le registre</button>
+          </div>
+        </div>
+      </div>
     </div>`;
+
+  document.querySelectorAll('#dash [data-goto]').forEach(b=>b.onclick=()=>render(b.dataset.goto));
+  const qr=document.getElementById('q-reload');
+  if(qr) qr.onclick=async()=>{ const r=await api('POST','/system/reload'); result(r,'Registre reconstruit.'); };
 }
 
 async function viewApps(){
