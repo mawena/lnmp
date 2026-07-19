@@ -104,6 +104,8 @@
   .checkbox{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:14px;font-family:var(--sans);
     text-transform:none;letter-spacing:0;margin:0}
   .checkbox input{width:auto}
+  .checkbox input:disabled{opacity:.5}
+  .field-note{margin:2px 0 0;color:var(--amber,#F5B544);font-size:12.5px;font-family:var(--sans);line-height:1.45}
   .form-foot{display:flex;justify-content:flex-end;gap:10px;padding:0 20px 18px}
 
   /* ---------- Toasts ---------- */
@@ -305,6 +307,12 @@ async function viewApps(){
         <div><label>Sous-domaine (option)</label><input type="text" id="a-sub" placeholder="= identifiant"></div>
         <div class="full"><label>Chemin (option)</label><input type="text" id="a-path" placeholder="/var/www/html/blog/public"></div>
         <label class="checkbox full"><input type="checkbox" id="a-apex"> Utiliser le domaine racine (apex) au lieu d'un sous-domaine</label>
+        <label class="checkbox full"><input type="checkbox" id="a-ssl"> Activer le SSL (HTTPS Let's Encrypt) après la création</label>
+        <div class="full" id="a-ssl-box" style="display:none">
+          <label>Email pour les alertes d'expiration (option)</label>
+          <input type="text" id="a-ssl-email" placeholder="admin@exemple.com">
+        </div>
+        <p class="field-note full" id="a-ssl-note" style="display:none">Le SSL Let's Encrypt nécessite un domaine public pointant vers ce serveur — indisponible pour un domaine local.</p>
       </div>
       <div class="form-foot"><button class="btn btn-primary btn-sm" id="a-add">Ajouter</button></div>
     </div>
@@ -314,9 +322,21 @@ async function viewApps(){
   // Remplir la liste des domaines
   const dr=await api('GET','/domains'); const doms=(dr.data&&dr.data.domains)||[];
   const sel=document.getElementById('a-domain');
-  sel.innerHTML = doms.length ? doms.map(d=>`<option value="${esc(d.name)}">${esc(d.name)} (${d.type==='local'?'local':'distant'})</option>`).join('')
+  sel.innerHTML = doms.length ? doms.map(d=>`<option value="${esc(d.name)}" data-type="${d.type==='local'?'local':'remote'}">${esc(d.name)} (${d.type==='local'?'local':'distant'})</option>`).join('')
                               : `<option value="">Aucun domaine — créez-en un</option>`;
   if(dr.data&&dr.data.default) sel.value=dr.data.default;
+
+  const ssl=document.getElementById('a-ssl'), sslBox=document.getElementById('a-ssl-box'), sslNote=document.getElementById('a-ssl-note');
+  function syncSsl(){
+    const opt=sel.options[sel.selectedIndex];
+    const isLocal = opt && opt.dataset.type==='local';
+    ssl.disabled = !!isLocal;
+    if(isLocal){ ssl.checked=false; sslNote.style.display=''; } else { sslNote.style.display='none'; }
+    sslBox.style.display = (ssl.checked && !ssl.disabled) ? '' : 'none';
+  }
+  sel.onchange=syncSsl;
+  ssl.onchange=()=>{ sslBox.style.display = (ssl.checked && !ssl.disabled) ? '' : 'none'; };
+  syncSsl();
 
   document.getElementById('a-add').onclick=addApp;
   document.getElementById('a-refresh').onclick=loadApps;
@@ -346,10 +366,20 @@ async function addApp(){
   const sub=document.getElementById('a-sub').value.trim();
   const path=document.getElementById('a-path').value.trim();
   const apex=document.getElementById('a-apex').checked;
+  const ssl=document.getElementById('a-ssl'); const wantSsl = ssl.checked && !ssl.disabled;
+  const sslEmail=document.getElementById('a-ssl-email').value.trim();
   if(!id){ toast('Identifiant requis.',false); return; }
   const body={id,domain}; if(apex)body.apex=true; else if(sub)body.sub=sub; if(path)body.path=path;
   const r=await api('POST','/apps',body);
-  if(result(r,`Application « ${id} » ajoutée.`)){ document.getElementById('a-id').value=''; document.getElementById('a-sub').value=''; document.getElementById('a-path').value=''; loadApps(); }
+  if(!result(r,`Application « ${id} » ajoutée.`)) return;
+  document.getElementById('a-id').value=''; document.getElementById('a-sub').value=''; document.getElementById('a-path').value='';
+  if(wantSsl){
+    toast(`SSL en cours pour « ${id} »…`,true);
+    const rs=await api('POST','/apps/'+encodeURIComponent(id)+'/ssl',sslEmail?{email:sslEmail}:{});
+    result(rs,`SSL activé pour « ${id} ».`);
+    ssl.checked=false; document.getElementById('a-ssl-box').style.display='none'; document.getElementById('a-ssl-email').value='';
+  }
+  loadApps();
 }
 async function appAction(act,id){
   if(act==='delete'){ if(!await confirmModal('Supprimer l\'application',`« ${id} » et son vhost seront supprimés définitivement.`))return;
