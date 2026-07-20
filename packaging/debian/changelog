@@ -1,4 +1,4 @@
-lnmp (1.21-1) UNRELEASED; urgency=medium
+lnmp (1.22-1) UNRELEASED; urgency=medium
 
   * Le paquet n'impose plus Nginx/MariaDB/PHP/Certbot comme dépendances
     (déplacés en Suggests) : « apt install lnmp » n'installe plus que l'outil,
@@ -27,8 +27,10 @@ lnmp (1.21-1) UNRELEASED; urgency=medium
   * feat(webui): favicon reprenant le logo « stack-mark » du panneau
     admin
   * fix(status): JSON invalide quand le compteur d'apps vaut 0
+  * SSL local mkcert, sauvegarde/restauration de bases (db-dump/db-
+    import), favicon panneau, fix JSON status
 
- -- Charles Gamligo <gamligocharles@gmail.com>  Sun, 19 Jul 2026 05:21:46 +0000
+ -- Charles Gamligo <gamligocharles@gmail.com>  Mon, 20 Jul 2026 08:50:58 +0000
 
 lnmp (1.10-1) UNRELEASED; urgency=medium
 
