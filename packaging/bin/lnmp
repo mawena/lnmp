@@ -31,6 +31,7 @@ STATE_FILE="/var/log/lnmp_install_state"
 APPS_REGISTRY="/etc/nginx/lnmp_apps.list"
 HOSTS_FILE="/etc/hosts"
 CERTS_DIR="$CONFIG_DIR/certs"
+BACKUP_DIR="/var/backups/lnmp"
 WEBUI_SRC="/usr/share/lnmp/webui"
 WEBUI_DEST="/var/www/html/lnmp"
 
@@ -687,6 +688,75 @@ db_drop() {
     emit_result ok "Base '$db_name' supprimée."
 }
 
+# Choisit l'outil de dump disponible (MariaDB récent : mariadb-dump).
+db_dump_bin() {
+    if command -v mariadb-dump >/dev/null 2>&1; then echo mariadb-dump
+    elif command -v mysqldump >/dev/null 2>&1; then echo mysqldump
+    else return 1; fi
+}
+
+db_dump() {
+    local db_name="${OPT[name]:-$1}"
+    if [ -z "$db_name" ] && [ "$JSON_MODE" -eq 0 ]; then db_list; read -p "Nom de la base à sauvegarder : " db_name; fi
+    [ -z "$db_name" ] && { emit_result err "Nom de base requis."; return 1; }
+    if ! validate_app_id "$db_name"; then emit_result err "Nom de base invalide."; return 1; fi
+    if ! mariadb -N -e "SHOW DATABASES LIKE '$db_name';" 2>/dev/null | grep -qx "$db_name"; then
+        emit_result err "Base '$db_name' introuvable."; return 1
+    fi
+    local dump_bin; dump_bin=$(db_dump_bin) || { emit_result err "mariadb-dump/mysqldump introuvable."; return 1; }
+
+    # Fichier de sortie : --path fourni, sinon horodaté dans /var/backups/lnmp.
+    local out="${OPT[path]}"
+    if [ -z "$out" ]; then
+        mkdir -p "$BACKUP_DIR"
+        out="$BACKUP_DIR/${db_name}-$(date +%Y%m%d-%H%M%S).sql.gz"
+    fi
+    local dump_ok=1
+    if [[ "$out" == *.gz ]]; then
+        "$dump_bin" --single-transaction --routines --events "$db_name" 2>/dev/null | gzip -c > "$out" || dump_ok=0
+    else
+        "$dump_bin" --single-transaction --routines --events "$db_name" > "$out" 2>/dev/null || dump_ok=0
+    fi
+    if [ "$dump_ok" -ne 1 ] || [ ! -s "$out" ]; then rm -f "$out"; emit_result err "Échec de la sauvegarde de '$db_name'."; return 1; fi
+    chmod 600 "$out" 2>/dev/null || true
+
+    local size; size=$(du -h "$out" 2>/dev/null | cut -f1)
+    if [ "$JSON_MODE" -eq 1 ]; then
+        printf '{"ok":true,"database":"%s","file":"%s","size":"%s"}\n' \
+            "$(json_escape "$db_name")" "$(json_escape "$out")" "$(json_escape "$size")"
+        return
+    fi
+    echo -e "${GREEN}Sauvegarde créée.${NC}"
+    echo -e "  Base    : ${BLUE}$db_name${NC}"
+    echo -e "  Fichier : ${BLUE}$out${NC} (${size})"
+}
+
+db_import() {
+    local db_name="${OPT[name]:-$1}"
+    local file="${OPT[path]:-$2}"
+    if [ -z "$db_name" ] && [ "$JSON_MODE" -eq 0 ]; then db_list; read -p "Base cible : " db_name; fi
+    [ -z "$db_name" ] && { emit_result err "Nom de base requis."; return 1; }
+    if ! validate_app_id "$db_name"; then emit_result err "Nom de base invalide."; return 1; fi
+    if [ -z "$file" ] && [ "$JSON_MODE" -eq 0 ]; then read -p "Fichier de sauvegarde (.sql ou .sql.gz) : " file; fi
+    [ -z "$file" ] && { emit_result err "Fichier requis (--path)."; return 1; }
+    [ -f "$file" ] || { emit_result err "Fichier introuvable : $file"; return 1; }
+
+    if [ "$JSON_MODE" -eq 0 ] && [ -z "${OPT[yes]}" ]; then
+        read -p "Importer dans '$db_name' (des données existantes peuvent être écrasées) ? (y/n) : " confirm
+        [[ "$confirm" =~ ^[Yy]$ ]] || return 1
+    fi
+    # Crée la base cible si absente (sans toucher aux données si elle existe).
+    mariadb -e "CREATE DATABASE IF NOT EXISTS \`$db_name\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>/dev/null
+
+    local import_ok=1
+    if [[ "$file" == *.gz ]]; then
+        zcat "$file" 2>/dev/null | mariadb "$db_name" 2>/dev/null || import_ok=0
+    else
+        mariadb "$db_name" < "$file" 2>/dev/null || import_ok=0
+    fi
+    [ "$import_ok" -eq 1 ] && emit_result ok "Import terminé dans '$db_name'." || emit_result err "Échec de l'import dans '$db_name'."
+}
+
 # ==============================================================================
 # INTERFACE WEB D'ADMINISTRATION
 # ==============================================================================
@@ -1088,6 +1158,10 @@ Bases de données :
   db-create <nom>       Créer une base + utilisateur
   db-list               Lister les bases
   db-drop <nom>         Supprimer une base (--yes pour ne pas confirmer)
+  db-dump <nom>         Sauvegarder une base (--path <fichier>, sinon
+                        /var/backups/lnmp/<nom>-<horodatage>.sql.gz)
+  db-import <nom> <f>   Importer une base depuis un .sql ou .sql.gz
+                        (--path <fichier>, --yes pour ne pas confirmer)
 
 Interface web :
   set-password          Définir le mot de passe du panneau
@@ -1136,6 +1210,8 @@ if [ $# -gt 0 ]; then
         db-create)   db_create "$arg"; exit $? ;;
         db-list)     db_list; exit $? ;;
         db-drop)     db_drop "$arg"; exit $? ;;
+        db-dump)     db_dump "$arg"; exit $? ;;
+        db-import)   db_import "$arg" "$3"; exit $? ;;
         set-password) set_admin_password "$arg"; exit $? ;;
         admin-url)    reconfigure_admin; exit $? ;;
         *)           emit_result err "Commande inconnue : $cmd"; [ "$JSON_MODE" -eq 0 ] && show_help; exit 1 ;;
@@ -1166,6 +1242,8 @@ while true; do
     echo "14 - Ajouter un domaine"
     echo "15 - Retirer un domaine"
     echo "16 - Changer le mot de passe du panneau web"
+    echo " S - Sauvegarder une base de données (db-dump)"
+    echo " I - Importer une base de données (db-import)"
     echo " D - Diagnostic de la pile (doctor)"
     echo " R - Reconstruire le registre (reload-app)"
     echo " 0 - Quitter"
@@ -1189,6 +1267,8 @@ while true; do
         14) domain_add_interactive ;;
         15) read -p "Nom du domaine à retirer : " dn; domain_remove "$dn" ;;
         16) set_admin_password ;;
+        [Ss]) db_dump ;;
+        [Ii]) db_import ;;
         [Dd]) doctor ;;
         [Rr]) reload_app ;;
         0)  exit 0 ;;

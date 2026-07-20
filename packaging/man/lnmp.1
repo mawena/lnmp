@@ -110,6 +110,16 @@ Lister les bases de données existantes.
 .TP
 .BI "db-drop " nom
 Supprimer une base de données.
+.TP
+.BI "db-dump " nom
+Sauvegarder une base dans un fichier. Sans \fB\-\-path\fR, le fichier est
+horodaté dans \fI/var/backups/lnmp/\fR et compressé (\fB.sql.gz\fR). Avec
+\fB\-\-path\fR, l'extension \fB.gz\fR déclenche la compression.
+.TP
+.BI "db-import " "nom fichier"
+Importer une base depuis un fichier \fB.sql\fR ou \fB.sql.gz\fR (ou
+\fB\-\-path\fR). La base cible est créée si elle n'existe pas. \fB\-\-yes\fR
+évite la confirmation.
 .SH FICHIERS
 .TP
 .I /etc/nginx/lnmp_apps.list

@@ -106,3 +106,22 @@ Liste les bases de données utilisateur (masque les bases système).
 
 ### `db-drop [nom]`
 Supprime une base de données et son utilisateur associé. Demande confirmation.
+
+### `db-dump [nom]`
+Sauvegarde une base dans un fichier. Sans `--path`, écrit un fichier horodaté et
+compressé dans `/var/backups/lnmp/` (`<nom>-<AAAAMMJJ-HHMMSS>.sql.gz`). Avec
+`--path <fichier>`, l'extension `.gz` déclenche la compression, sinon SQL brut.
+
+```bash
+sudo lnmp db-dump blog                              # /var/backups/lnmp/blog-….sql.gz
+sudo lnmp db-dump blog --path /srv/backups/blog.sql # SQL non compressé
+```
+
+### `db-import [nom] [fichier]`
+Importe une base depuis un fichier `.sql` ou `.sql.gz` (détection par
+l'extension). La base cible est créée si elle n'existe pas. `--yes` saute la
+confirmation, `--path` remplace l'argument fichier.
+
+```bash
+sudo lnmp db-import blog /var/backups/lnmp/blog-20260720-101500.sql.gz
+```
