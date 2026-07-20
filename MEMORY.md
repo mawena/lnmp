@@ -1,1 +1,2 @@
 - [Pas de signature IA sur les commits](no-commit-signature.md) — jamais de Co-Authored-By Claude
+- [Infra dépôt APT Mawena](apt-repo-infra.md) — dépôt reprepro signé, multi-paquets, déploiement distant
