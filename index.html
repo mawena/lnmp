@@ -7,6 +7,8 @@
   <title>LNMP — Gestionnaire CLI pour pile web Ubuntu</title>
   <meta name="description"
     content="LNMP installe et gère une pile Nginx + MariaDB + PHP + SSL sur Ubuntu, en une commande.">
+  <link rel="icon" type="image/svg+xml"
+    href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%230E1420%22%2F%3E%3Crect%20x%3D%227%22%20y%3D%224%22%20width%3D%2218%22%20height%3D%224%22%20rx%3D%221.6%22%20fill%3D%22%23FF6B4A%22%2F%3E%3Crect%20x%3D%227%22%20y%3D%2211%22%20width%3D%2213%22%20height%3D%224%22%20rx%3D%221.6%22%20fill%3D%22%23F5B544%22%2F%3E%3Crect%20x%3D%227%22%20y%3D%2218%22%20width%3D%2216%22%20height%3D%224%22%20rx%3D%221.6%22%20fill%3D%22%233FB984%22%2F%3E%3Crect%20x%3D%227%22%20y%3D%2225%22%20width%3D%2211%22%20height%3D%224%22%20rx%3D%221.6%22%20fill%3D%22%235AA9E6%22%2F%3E%3C%2Fsvg%3E">
   <style>
     :root {
       --ink: #0E1420;
@@ -814,28 +816,35 @@
       <div class="sec-head">
         <span class="eyebrow">Installation</span>
         <h2>Documentation d'installation</h2>
-        <p>Deux étapes : installer le paquet depuis le dépôt APT, puis lancer l'installation de la pile. Les dépendances
-          (Nginx, MariaDB, PHP, Certbot) sont gérées automatiquement.</p>
+        <p>Trois commandes : ajouter la clé publique du dépôt, ajouter le dépôt APT signé, puis installer.
+          <code>apt install lnmp</code> installe <b>et configure</b> toute la pile (Nginx, MariaDB, PHP, Certbot),
+          déploie le panneau web et démarre le démon — automatiquement.</p>
       </div>
 
-      <p class="doc-step-label"><span class="doc-num">1</span> Ajouter le dépôt et installer le paquet</p>
+      <p class="doc-step-label"><span class="doc-num">1</span> Ajouter la clé publique du dépôt</p>
       <div class="cmd">
         <span class="prmpt">$</span>
-        <code
-          id="install-cmd">echo "deb [trusted=yes] https://mawena.cloud/repo /" | sudo tee /etc/apt/sources.list.d/mawena.list && sudo apt update && sudo apt install lnmp</code>
-        <button class="copy" data-copy="install-cmd">Copier</button>
+        <code id="install-key">sudo mkdir -p /etc/apt/keyrings && curl -fsSL https://mawena.cloud/repo/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/mawena.gpg</code>
+        <button class="copy" data-copy="install-key">Copier</button>
       </div>
 
-      <p class="doc-step-label"><span class="doc-num">2</span> Installer et configurer la pile</p>
+      <p class="doc-step-label"><span class="doc-num">2</span> Ajouter le dépôt APT</p>
       <div class="cmd">
         <span class="prmpt">$</span>
-        <code id="install-cmd2">sudo lnmp install</code>
-        <button class="copy" data-copy="install-cmd2">Copier</button>
+        <code id="install-repo">echo "deb [signed-by=/etc/apt/keyrings/mawena.gpg] https://mawena.cloud/repo stable main" | sudo tee /etc/apt/sources.list.d/mawena.list</code>
+        <button class="copy" data-copy="install-repo">Copier</button>
       </div>
-      <p class="doc-note">L'installation est <b>idempotente</b> (elle reprend à la dernière étape réussie) et vous
-        demande deux choses : le <b>domaine par défaut</b> (ex. <code>mawena.cloud</code>, ou <code>test</code> pour un
-        usage local) et le <b>mot de passe du panneau web</b>. À la fin, le panneau est accessible sur
-        <code>http://admin.lnmp</code>.</p>
+
+      <p class="doc-step-label"><span class="doc-num">3</span> Installer le paquet (et toute la pile)</p>
+      <div class="cmd">
+        <span class="prmpt">$</span>
+        <code id="install-pkg">sudo apt update && sudo apt install lnmp</code>
+        <button class="copy" data-copy="install-pkg">Copier</button>
+      </div>
+      <p class="doc-note">Il ne reste qu'à définir le <b>mot de passe du panneau web</b> (non fixé par défaut, pour des
+        raisons de sécurité) avec <code>sudo lnmp set-password</code>. Le panneau est alors accessible sur
+        <code>http://admin.lnmp</code>. La commande <code>sudo lnmp install</code> reste disponible pour une
+        (re)configuration interactive <b>idempotente</b> (domaine par défaut, interface du panneau…).</p>
 
       <p class="doc-note doc-tip"><b>Prérequis :</b> Ubuntu 22.04+ avec accès <code>sudo</code>. Pour le HTTPS, le
         domaine doit pointer vers le serveur.</p>
