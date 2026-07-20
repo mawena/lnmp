@@ -57,10 +57,18 @@ mkdir -p archive
 rm -rf "archive/$TARGET_DIR" # Nettoyer si une ancienne archive locale du même nom existe
 mv "$TARGET_DIR" archive/
 
-# 7. Transfert automatique vers le serveur de production (mawena.cloud)
+# 7. Transfert + intégration au dépôt reprepro (déclenché à distance, sans
+#    connexion interactive au VPS).
+REMOTE_HOST="mawena.cloud"
+REMOTE_PORT="2244"
+REMOTE_REPO="/var/www/html/Mawena/mawena/repo"   # racine du dépôt reprepro
 DEB_FILE="archive/lnmp_${VERSION}/lnmp_${VERSION}_all.deb"
-echo -e "\033[0;34m-> Transfert du fichier .deb vers le serveur de prod (Port 2244)...\033[0m"
-scp -P 2244 "$DEB_FILE" mawena.cloud:/var/www/html/Mawena/mawena/repo/ubuntu/
+DEB_NAME="lnmp_${VERSION}_all.deb"
 
-echo -e "\033[0;32m=== Build v$VERSION terminé, archivé localement et envoyé sur le serveur ! ===\033[0m"
-echo -e "Étape suivante : Connectez-vous sur le serveur et lancez : \033[0;33msudo /var/www/html/Mawena/mawena/repo/update_repo.sh\033[0m"
+echo -e "\033[0;34m-> Transfert du .deb vers $REMOTE_HOST (port $REMOTE_PORT)...\033[0m"
+scp -P "$REMOTE_PORT" "$DEB_FILE" "${REMOTE_HOST}:${REMOTE_REPO}/ubuntu/"
+
+echo -e "\033[0;34m-> Intégration au dépôt reprepro à distance...\033[0m"
+ssh -p "$REMOTE_PORT" "$REMOTE_HOST" "${REMOTE_REPO}/update_repo.sh ${REMOTE_REPO}/ubuntu/${DEB_NAME}"
+
+echo -e "\033[0;32m=== Build v$VERSION envoyé et intégré au dépôt « stable » ! ===\033[0m"
