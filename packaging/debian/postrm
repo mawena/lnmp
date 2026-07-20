@@ -8,7 +8,7 @@ case "$1" in
     remove|purge)
         systemctl disable --now lnmp-admin 2>/dev/null || true
         rm -f /etc/nginx/sites-enabled/admin.lnmp /etc/nginx/sites-available/admin.lnmp
-        rm -rf /var/www/html/lnmp
+        rm -f /var/www/lnmp        # symlink d'exposition (le code /usr/share part avec le paquet)
         # Retirer les entrées /etc/hosts gérées par lnmp
         sed -i '/#[[:space:]]*lnmp[[:space:]]*$/d' /etc/hosts 2>/dev/null || true
         if command -v nginx >/dev/null 2>&1 && [ -f /etc/nginx/nginx.conf ]; then

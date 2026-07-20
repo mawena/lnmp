@@ -32,8 +32,8 @@ APPS_REGISTRY="/etc/nginx/lnmp_apps.list"
 HOSTS_FILE="/etc/hosts"
 CERTS_DIR="$CONFIG_DIR/certs"
 BACKUP_DIR="/var/backups/lnmp"
-WEBUI_SRC="/usr/share/lnmp/webui"
-WEBUI_DEST="/var/www/html/lnmp"
+WEBUI_SRC="/usr/share/lnmp/public"   # code du panneau (fourni par le paquet, lecture seule)
+WEB_ROOT="/var/www/lnmp"             # exposition web (symlink -> WEBUI_SRC)
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -805,6 +805,13 @@ configure_admin_access() {
     write_config
 }
 
+# Expose le panneau : /var/www/lnmp -> /usr/share/lnmp/public (symlink).
+# Le code reste géré par le paquet (lecture seule dans /usr/share).
+deploy_webui() {
+    mkdir -p /var/www
+    ln -sfn "$WEBUI_SRC" "$WEB_ROOT"
+}
+
 write_admin_vhost() {
     local note="lié à ${ADMIN_LISTEN}"
     [ "$ADMIN_LISTEN" = "127.0.0.1" ] && note="lié à 127.0.0.1 (accès distant via tunnel SSH)"
@@ -814,7 +821,7 @@ write_admin_vhost() {
 server {
     listen ${ADMIN_LISTEN}:80;
     server_name ${ADMIN_HOST};
-    root ${WEBUI_DEST};
+    root ${WEB_ROOT};
     index index.html;
     charset utf-8;
 
@@ -858,10 +865,8 @@ install_web_admin() {
     # 1. Choix du lien (nom d'hôte) et de l'interface d'écoute
     configure_admin_access
 
-    # 2. Déployer le panneau statique
-    mkdir -p "$WEBUI_DEST"
-    [ -d "$WEBUI_SRC" ] && cp -a "$WEBUI_SRC/." "$WEBUI_DEST/"
-    chown -R www-data:webdev "$WEBUI_DEST" 2>/dev/null || true
+    # 2. Exposer le panneau statique (symlink /var/www/lnmp -> /usr/share/lnmp/public)
+    deploy_webui
 
     # 3. Mot de passe admin (si absent)
     if [ ! -f "$ADMIN_CONF" ]; then
@@ -884,9 +889,10 @@ install_web_admin() {
 
 # Reconfigure le lien / l'interface du panneau après l'installation.
 reconfigure_admin() {
-    if [ ! -f "$WEBUI_DEST/index.html" ]; then
+    if [ ! -f "$WEBUI_SRC/index.html" ]; then
         emit_result err "Le panneau n'est pas installé (lancez 'lnmp install')."; return 1
     fi
+    deploy_webui
     configure_admin_access
     write_admin_vhost
     ln -sf /etc/nginx/sites-available/admin.lnmp /etc/nginx/sites-enabled/
@@ -943,9 +949,7 @@ configure_stack() {
     systemctl enable --now "php${PHP_VERSION}-fpm" 2>/dev/null || true
 
     # Interface web d'administration (valeurs par défaut/config, sans prompt)
-    mkdir -p "$WEBUI_DEST"
-    [ -d "$WEBUI_SRC" ] && cp -a "$WEBUI_SRC/." "$WEBUI_DEST/"
-    chown -R www-data:webdev "$WEBUI_DEST" 2>/dev/null || true
+    deploy_webui
     write_admin_vhost
     ln -sf /etc/nginx/sites-available/admin.lnmp /etc/nginx/sites-enabled/ 2>/dev/null || true
     hosts_remove "$ADMIN_HOST"
@@ -1061,7 +1065,7 @@ uninstall_lnmp() {
     echo -e "${YELLOW}-> Retrait du service web d'administration LNMP...${NC}"
     systemctl disable --now lnmp-admin 2>/dev/null || true
     rm -f /etc/nginx/sites-enabled/admin.lnmp /etc/nginx/sites-available/admin.lnmp
-    rm -rf "$WEBUI_DEST"
+    rm -f "$WEB_ROOT"            # symlink d'exposition (le code /usr/share reste au paquet)
     hosts_remove "$ADMIN_HOST"
     rm -f "$ADMIN_CONF"
 

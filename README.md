@@ -57,7 +57,8 @@ Sans argument, `sudo lnmp` ouvre le menu interactif.
 
 ## 🖥️ Interface web
 
-Le panneau (`/var/www/html/lnmp`, servi par le vhost `admin.lnmp` lié à
+Le panneau (code dans `/usr/share/lnmp/public`, exposé via le symlink
+`/var/www/lnmp` et servi par le vhost `admin.lnmp` lié à
 127.0.0.1) est piloté par le démon **`lnmpd`** (API JSON locale, service
 systemd `lnmp-admin`). Accès distant recommandé via tunnel SSH :
 
@@ -89,7 +90,7 @@ lnmp (CLI /usr/bin)  ─┐
 lnmpd (démon root) ───┘   ← API locale 127.0.0.1, appelée par le panneau web
    ▲
    │ proxy /api/
-nginx (vhost admin.lnmp, 127.0.0.1) → panneau statique /var/www/html/lnmp
+nginx (vhost admin.lnmp, 127.0.0.1) → /var/www/lnmp → /usr/share/lnmp/public
 ```
 
 ## 🛠️ Développement

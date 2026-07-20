@@ -11,7 +11,8 @@
 | `/var/log/lnmp_install_state`        | Étape d'installation atteinte (reprise sur incident, 0–8).  |
 | `/etc/nginx/sites-available/<id>`    | Configuration vhost de chaque application.                  |
 | `/etc/nginx/sites-enabled/<id>`      | Lien symbolique = application active.                       |
-| `/var/www/html/lnmp`                 | Panneau web statique (servi par le vhost `admin.lnmp`).     |
+| `/usr/share/lnmp/public`             | Panneau web statique (fourni par le paquet, lecture seule). |
+| `/var/www/lnmp`                      | Symlink d'exposition → `/usr/share/lnmp/public` (vhost `admin.lnmp`). |
 
 ## Format du registre
 
