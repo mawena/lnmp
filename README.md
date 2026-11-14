@@ -22,22 +22,30 @@ bases de données en quelques secondes.
   `/etc/hosts` automatiquement (façon Laragon).
 - 🔒 **SSL en un clic** : Let's Encrypt (domaines distants) ou **mkcert**
   (domaines locaux, certificat de confiance locale) — redirection HTTPS auto.
-- 🗄️ **Bases de données** : base + utilisateur dédié en une commande.
+- 🗄️ **Bases de données** : base + utilisateur dédié en une commande, avec
+  sauvegarde et restauration (`db-dump` / `db-import`).
 - 🩺 **Diagnostic** intégré (`doctor`) et sortie **`--json`** scriptable.
 - 🖱️ **Trois interfaces** équivalentes : menu interactif, CLI, panneau web.
 
 ## 📦 Installation
 
 ```bash
-# Dépôt APT + installation complète (la pile est installée ET configurée)
-echo "deb [trusted=yes] https://mawena.cloud/repo /" | sudo tee /etc/apt/sources.list.d/mawena.list
+# 1. Clé publique du dépôt APT signé
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://mawena.cloud/repo/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/mawena.gpg
+
+# 2. Dépôt APT
+echo "deb [signed-by=/etc/apt/keyrings/mawena.gpg] https://mawena.cloud/repo stable main" | sudo tee /etc/apt/sources.list.d/mawena.list
+
+# 3. Installation complète (la pile est installée ET configurée)
 sudo apt update && sudo apt install lnmp
 
 # Définir le mot de passe du panneau web (non fixé par défaut)
 sudo lnmp set-password
 ```
 
-`apt install lnmp` installe **et configure** toute la pile (Nginx, MariaDB, PHP,
+Prérequis : Ubuntu 22.04 ou plus récent avec accès `sudo` (voir
+[docs/installation.md](docs/installation.md)). `apt install lnmp` installe **et configure** toute la pile (Nginx, MariaDB, PHP,
 Certbot), déploie le panneau et démarre le démon — rien d'autre à lancer. Le
 panneau est ensuite disponible sur `http://admin.lnmp` (ajoutez
 `127.0.0.1 admin.lnmp` sur votre poste, ou tunnel SSH pour un VPS — voir
@@ -78,6 +86,8 @@ sudo lnmp set-password                          # (ré)initialiser le mot de pas
 | `add-ssl` / `remove-ssl` | Certificats Let's Encrypt                  |
 | `domain list\|add\|remove` | Gérer les domaines de base (`--local`)   |
 | `db-create` / `db-list` / `db-drop` | Bases de données MariaDB        |
+| `db-dump` / `db-import` | Sauvegarder / restaurer une base (`/var/backups/lnmp`) |
+| `admin-url`           | Changer le lien et l'interface d'écoute du panneau |
 | `set-password`        | Mot de passe du panneau web                   |
 
 Documentation complète : dossier [`docs/`](docs/) ou `man lnmp`.
