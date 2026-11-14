@@ -12,7 +12,9 @@
 Ajoutez le dépôt Mawena, mettez à jour la liste des paquets, puis installez :
 
 ```bash
-echo "deb [trusted=yes lang=none] https://mawena.cloud/repo /" | sudo tee /etc/apt/sources.list.d/mawena.list
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://mawena.cloud/repo/public.key | sudo gpg --dearmor -o /etc/apt/keyrings/mawena.gpg
+echo "deb [signed-by=/etc/apt/keyrings/mawena.gpg] https://mawena.cloud/repo stable main" | sudo tee /etc/apt/sources.list.d/mawena.list
 sudo apt update
 sudo apt install lnmp
 ```
